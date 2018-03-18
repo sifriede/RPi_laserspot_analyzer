@@ -19,7 +19,9 @@ from PyQt5.QtCore import *
 
 # Use picamera only if available
 picamfound = util.find_spec("picamera") is not None
-if not picamfound:
+if picamfound:
+    import picamera
+else:
     print("No picamera module found, camera not available!")
 
 version = 1.3
