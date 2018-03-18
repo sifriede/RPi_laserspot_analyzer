@@ -3,7 +3,7 @@
 import matplotlib.gridspec as gridspec
 import matplotlib.image as mpimg
 import numpy as np
-import importlib
+from importlib import util
 
 import datetime, time
 import os, sys
@@ -18,7 +18,9 @@ from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 
 # Use picamera only if available
-picamfound = importlib.util.find_spec("picamera") is not None
+picamfound = util.find_spec("picamera") is not None
+if not picamfound:
+    print("No picamera module found, camera not available!")
 
 version = 1.3
 
@@ -155,8 +157,8 @@ class PlotAnalyseCanvas(FigureCanvas):
             popt_y, pcov_y = curve_fit(self.gaussian, self.data_y[0], self.data_y[1],
                                        p0=[1, self.mean_img_y, self.sigma_y, self.offset_y])
         except:
-            popt_x, popt_y = [[0, 0, 1], [0, 0, 1]]
-            pcov_x, pcov_y = np.zeros((3, 3)), np.zeros((3, 3))
+            popt_x, popt_y = [[0, 0, 1, 0], [0, 0, 1, 0]]
+            pcov_x, pcov_y = np.zeros((4, 4)), np.zeros((4, 4))
 
         self.data_x_rslt = [popt_x, pcov_x]
         self.data_y_rslt = [popt_y, pcov_y]
@@ -170,9 +172,9 @@ class PlotAnalyseCanvas(FigureCanvas):
                         "sigma_(y,rms) = ({:.2f} +/- {:.2f}) um\n" \
             .format(now.strftime("%Y-%m-%d %H:%M:%S"), *self.last_rslt)
         print("Finished Calculating! Results:\n")
-        print("mu_x = {:.2f}, sigma_x = {:.2f}, offset_x = {:.2f}".format(*popt_x[1:]))
+        print("amp_x= {}, mu_x = {:.2f}, sigma_x = {:.2f}, offset_x = {:.2f}".format(*popt_x))
         print("pcov_x = {}".format(pcov_x))
-        print("mu_y = {:.2f}, sigma_y = {:.2f}, offset_y = {:.2f}".format(*popt_y[1:]))
+        print("amp_y= {}, mu_y = {:.2f}, sigma_y = {:.2f}, offset_y = {:.2f}".format(*popt_y))
         print("pcov_y = {}".format(pcov_y))
 
         self.plot()
