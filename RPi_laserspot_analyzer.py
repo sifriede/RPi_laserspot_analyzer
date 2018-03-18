@@ -3,8 +3,8 @@
 import matplotlib.gridspec as gridspec
 import matplotlib.image as mpimg
 import numpy as np
-import picamera  # https://www.raspberrypi.org/documentation/hardware/camera/
-import picamera.array
+import importlib
+
 import datetime, time
 import os, sys
 
@@ -17,36 +17,39 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 
-version = 1.2
+# Use picamera only if available
+picamfound = importlib.util.find_spec("picamera") is not None
+
+version = 1.3
 
 
 class MyEvent(QObject):
     my_event = pyqtSignal()
 
+if picamfound:
+    class MyCamera(picamera.PiCamera):
+        def __init__(self, left=100, top=100, width=1024, height=768):
+            super(MyCamera, self).__init__()
 
-class MyCamera(picamera.PiCamera):
-    def __init__(self, left=100, top=100, width=1024, height=768):
-        super(MyCamera, self).__init__()
+            self.prev_left, self.prev_top = left, top
+            self.prev_width, self.prev_height = width, height
 
-        self.prev_left, self.prev_top = left, top
-        self.prev_width, self.prev_height = width, height
+            self.imageres = [1024, 768]
+            # Pixel to um
+            self.pxl2um = 3.76 / 2592
 
-        self.imageres = [1024, 768]
-        # Pixel to um
-        self.pxl2um = 3.76 / 2592
+            # set camera resolution, gain , sutter speed and framerate
+            self.resolution = (self.imageres[0], self.imageres[1])
+            # self.framerate = 33  # in Hz
+            # self.shutter_speed = 500  # in us
+            # self.exposure_mode = 'off'
+            # self.iso = 300
 
-        # set camera resolution, gain , sutter speed and framerate
-        self.resolution = (self.imageres[0], self.imageres[1])
-        # self.framerate = 33  # in Hz
-        # self.shutter_speed = 500  # in us
-        # self.exposure_mode = 'off'
-        # self.iso = 300
-
-    def my_start_preview(self):
-        self.start_preview(
-            fullscreen=False,
-            window=(self.prev_left, self.prev_top, self.prev_width, self.prev_height)
-        )
+        def my_start_preview(self):
+            self.start_preview(
+                fullscreen=False,
+                window=(self.prev_left, self.prev_top, self.prev_width, self.prev_height)
+            )
 
 
 class PlotAnalyseCanvas(FigureCanvas):
@@ -64,6 +67,7 @@ class PlotAnalyseCanvas(FigureCanvas):
         self.img_color = None
         self.mean_img_x, self.mean_img_y = None, None
         self.sigma_x, self.sigma_y = 200, 200
+        self.offset_x, self.offset_y = None, None
         self.data_x, self.data_y = None, None
         self.data_x_rslt, self.data_y_rslt = None, None
 
@@ -86,8 +90,8 @@ class PlotAnalyseCanvas(FigureCanvas):
         FigureCanvas.updateGeometry(self)
 
     @staticmethod
-    def gaussian(x, a, x0, sigma):
-        return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2))
+    def gaussian(x, a, x0, sigma, offset):
+        return a / (sigma * np.sqrt(2 * np.pi)) * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2)) - offset
 
     def change_center(self, x, y):
         self.mean_img_x = x
@@ -132,24 +136,24 @@ class PlotAnalyseCanvas(FigureCanvas):
             self.reset_mean_val(img_data)
 
         print("mean_img_x, mean_img_y = ({}, {})".format(self.mean_img_x, self.mean_img_y))
-        # todo change mean_img_x and mean_img_y via slider
-        # mean_img_y, mean_img_x = np.unravel_index(img_color.argmax(), img_color.shape)
 
         self.img_color = img_data[:, :, self.color]
 
         x_x = np.linspace(0, len(self.img_color[0, :]), len(self.img_color[0, :]))
         x_y = self.img_color[self.mean_img_y, :] / sum(self.img_color[self.mean_img_y, :])
         self.data_x = [x_x, x_y]
+        self.offset_x = min(x_y)
 
         y_x = np.linspace(0, len(self.img_color[:, 0]), len(self.img_color[:, 0]))
         y_y = self.img_color[:, self.mean_img_x] / sum(self.img_color[:, self.mean_img_x])
         self.data_y = [y_x, y_y]
+        self.offset_y = min(y_y)
 
         try:
             popt_x, pcov_x = curve_fit(self.gaussian, self.data_x[0], self.data_x[1],
-                                       p0=[1, self.mean_img_x, self.sigma_x])
+                                       p0=[1, self.mean_img_x, self.sigma_x, self.offset_x])
             popt_y, pcov_y = curve_fit(self.gaussian, self.data_y[0], self.data_y[1],
-                                       p0=[1, self.mean_img_y, self.sigma_y])
+                                       p0=[1, self.mean_img_y, self.sigma_y, self.offset_y])
         except:
             popt_x, popt_y = [[0, 0, 1], [0, 0, 1]]
             pcov_x, pcov_y = np.zeros((3, 3)), np.zeros((3, 3))
@@ -162,9 +166,14 @@ class PlotAnalyseCanvas(FigureCanvas):
                           [2 * self.data_x_rslt[0][2], 2 * np.sqrt(self.data_x_rslt[1][2, 2]),
                            2 * self.data_y_rslt[0][2], 2 * np.sqrt(self.data_y_rslt[1][2, 2])]]
         self.rslt_str = "{}\n" \
-                        "wx = ({:.2f} +/- {:.2f}) um\n" \
-                        "wy = ({:.2f} +/- {:.2f}) um\n" \
+                        "sigma_(x,rms) = ({:.2f} +/- {:.2f}) um\n" \
+                        "sigma_(y,rms) = ({:.2f} +/- {:.2f}) um\n" \
             .format(now.strftime("%Y-%m-%d %H:%M:%S"), *self.last_rslt)
+        print("Finished Calculating! Results:\n")
+        print("mu_x = {:.2f}, sigma_x = {:.2f}, offset_x = {:.2f}".format(*popt_x[1:]))
+        print("pcov_x = {}".format(pcov_x))
+        print("mu_y = {:.2f}, sigma_y = {:.2f}, offset_y = {:.2f}".format(*popt_y[1:]))
+        print("pcov_y = {}".format(pcov_y))
 
         self.plot()
 
@@ -186,12 +195,13 @@ class PlotAnalyseCanvas(FigureCanvas):
         ax_image.set_xlabel('x in pixel')
         ax_image.set_ylabel('y in pixel')
         ax_image.grid(color='w', alpha=0.5, linestyle='dashed', linewidth=0.5)
-        # ax_image.yaxis.tick_right()
 
         # Colorbar
         ax_image_cb = self.figure.add_subplot(gs[:-1, -1])
         ax_image_cb.set_label('Intensity')
-        self.figure.colorbar(im, cax=ax_image_cb)
+        cbar = self.figure.colorbar(im, cax=ax_image_cb)
+        # cbar.set_ticks([0, .25, .5, .75, 255])
+        # cbar.set_ticklabels(['0', '25%', '50%', '75%', '100%'])
 
         # Second x and y axis in micrometer
         scld_xticks = np.around(self.pxl2um * np.arange(min(self.data_x[0]), max(self.data_x[0]), 100), 2)
@@ -244,7 +254,8 @@ class MyMainWindow(QWidget):
         # Initialize camera
         preview = [round(x) for x in [self.my_left, self.my_top,
                                       0.8 * self.my_width, 0.8 * self.my_height]]
-        self.camera = MyCamera(*preview)
+        if picamfound:
+            self.camera = MyCamera(*preview)
 
         # Initialize UI
         self.init_ui()
@@ -273,19 +284,38 @@ class MyMainWindow(QWidget):
         # Navigation bar and latest results
         self.ln_edt_x = QLineEdit()
         self.ln_edt_x.setText("No results yet")
-        # self.ln_edt_x.setMinimumWidth(200)
+        self.ln_edt_wx = QLineEdit()
+        self.ln_edt_wx.setText("No results yet")
         self.ln_edt_y = QLineEdit()
-        # self.ln_edt_y.setMinimumWidth(200)
         self.ln_edt_y.setText("No results yet")
+        self.ln_edt_wy = QLineEdit()
+        self.ln_edt_wy.setText("No results yet")
 
-        lyt_nav = QGridLayout()
-        lyt_nav.addWidget(self.m_toolbar, 0, 0)
-        lyt_nav.addWidget(QLabel("sigma_x:"), 0, 1)
-        lyt_nav.addWidget(self.ln_edt_x, 0, 2)
-        lyt_nav.addWidget(QLabel("sigma_y:"), 1, 1)
-        lyt_nav.addWidget(self.ln_edt_y, 1, 2)
+        lbl_font = QFont("Helvetica", 12)
+        lbl_x = QLabel("2\u00b7\u03c3<sub>x,rms</sub>:")
+        lbl_x.setFont(lbl_font)
+        lbl_wx = QLabel("FWHM<sub>x</sub>:")
+        lbl_wx.setFont(lbl_font)
+        lbl_y = QLabel("2\u00b7\u03c3<sub>y,rms</sub>:")
+        lbl_y.setFont(lbl_font)
+        lbl_wy = QLabel("FWHM<sub>y</sub>:")
+        lbl_wy.setFont(lbl_font)
 
-        # Infos and Results
+        lyt_rslt = QGridLayout()
+        lyt_rslt.addWidget(lbl_x, 0, 0)
+        lyt_rslt.addWidget(self.ln_edt_x, 0, 1)
+        lyt_rslt.addWidget(lbl_wx, 0, 2)
+        lyt_rslt.addWidget(self.ln_edt_wx, 0, 3)
+        lyt_rslt.addWidget(lbl_y, 1, 0)
+        lyt_rslt.addWidget(self.ln_edt_y, 1, 1)
+        lyt_rslt.addWidget(lbl_wy, 1, 2)
+        lyt_rslt.addWidget(self.ln_edt_wy, 1, 3)
+
+        lyt_nav = QHBoxLayout()
+        lyt_nav.addWidget(self.m_toolbar)
+        lyt_nav.addLayout(lyt_rslt)
+
+        # Info and result box
         lbl_info = QLabel("Info")
         self.txt_info = QTextEdit()
         self.txt_info.setReadOnly(True)
@@ -353,6 +383,9 @@ class MyMainWindow(QWidget):
         self.sig.my_event.emit()
 
     def start_live_view(self, btn):
+        if not picamfound:
+            self.txt_info.append("Live view not available: No picamera module loaded")
+            return
         if btn.isChecked():
             self.txt_info.append("Live view started")
             self.btn_live_view.setText("Stop Live View")
@@ -391,13 +424,16 @@ class MyMainWindow(QWidget):
         self.exec_calc()
 
     def take_picture(self):
+        if not picamfound:
+            self.txt_info.append("Live view not available: No picamera module loaded")
+            return
         now = datetime.datetime.now()
         self.camera.my_start_preview()
         time.sleep(1)
         my_pic = '{}_image.bmp'.format(now.strftime("%Y-%m-%d_%H%M%S"))
         # my_pic_dat = picamera.array.PiRGBArray(self.camera)
         my_pic_dat = np.empty((self.camera.resolution[1], self.camera.resolution[0], 3), dtype=np.uint8)
-        print(self.camera.resolution)
+        self.txt_info.append("Camera resolution: {}x{}".format(*self.camera.resolution))
         self.camera.capture(my_pic)
         self.camera.capture(my_pic_dat, 'rgb')
         self.camera.stop_preview()
@@ -407,6 +443,9 @@ class MyMainWindow(QWidget):
         self.exec_calc()
 
     def change_color(self):
+        if self.m.last_img is None:
+            self.txt_info.append("No image selected yet")
+            return
         self.txt_info.append("Color {} selected".format(self.cbb_plot_cctr.currentText()))
         self.m.change_color_channel(self.cbb_plot_cctr.currentIndex())
         self.exec_calc()
@@ -417,13 +456,19 @@ class MyMainWindow(QWidget):
         if self.m.last_img is not None:
             self.exec_calc()
 
+    def set_latest_rslt(self):
+        FWHM = [np.sqrt(2 * np.log(2)) * x for x in self.m.last_rslt]
+        self.ln_edt_x.setText('({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[:2]))
+        self.ln_edt_wx.setText('({:.2f} +/- {:.2f}) um'.format(*FWHM[:2]))
+        self.ln_edt_y.setText('({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[2:]))
+        self.ln_edt_wy.setText('({:.2f} +/- {:.2f}) um'.format(*FWHM[2:]))
+
     def exec_calc(self):
         self.m.img_to_data()
         self.txt_rslt.append(self.m.rslt_str)
         time.sleep(.5)
         self.set_slider()
-        self.ln_edt_x.setText('({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[:2]))
-        self.ln_edt_y.setText('({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[2:]))
+        self.set_latest_rslt()
         self.txt_rslt.append(str(self.m.last_rslt))
 
 
