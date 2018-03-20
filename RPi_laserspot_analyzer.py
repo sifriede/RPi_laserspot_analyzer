@@ -2,6 +2,7 @@
 
 import matplotlib.gridspec as gridspec
 import matplotlib.image as mpimg
+import matplotlib.pyplot as plt
 import numpy as np
 from importlib import util
 
@@ -111,6 +112,20 @@ class PlotAnalyseCanvas(FigureCanvas):
         self.mean_img_x = int(np.round(img_data.shape[1] / 2))
         self.mean_img_y = int(np.round(img_data.shape[0] / 2))
 
+    def show_img(self, pic=None):
+        print("Type(pic) = {}".format(type(pic)))
+        if pic is None:
+            self.error_msg = "No image selected yet"
+            print(self.error_msg)
+            return self.error_msg
+        elif type(pic) is picamera.array.PiBayerArray:
+            plt.imshow(pic.demosaic())
+            plt.show()
+        elif type(pic) is np.ndarray:
+            plt.imshow(pic)
+            plt.show()
+
+
     def img_to_data(self):
         if self.last_img is None:
             self.error_msg = "No image selected yet"
@@ -209,8 +224,8 @@ class PlotAnalyseCanvas(FigureCanvas):
         # cbar.set_ticklabels(['0', '25%', '50%', '75%', '100%'])
 
         # Second x and y axis in micrometer
-        scld_xticks = np.around(self.pxl2um * np.arange(min(self.data_x[0]), max(self.data_x[0]), 100), 2)
-        scld_yticks = np.around(self.pxl2um * np.arange(min(self.data_y[0]), max(self.data_y[0]), 100), 2)
+        scld_xticks = np.around(self.pxl2um * np.arange(min(self.data_x[0]), max(self.data_x[0]), 125), 2)
+        scld_yticks = np.around(self.pxl2um * np.arange(min(self.data_y[0]), max(self.data_y[0]), 125), 2)
 
         ax_image_x2 = ax_image.twiny()
         ax_image_x2.set_xticks(scld_xticks)
@@ -242,6 +257,8 @@ class MyMainWindow(QWidget):
 
     def __init__(self, parent=None):
         super(MyMainWindow, self).__init__(parent)
+        # Initial Parameters
+        self.raw_bayer_data = None
 
         # Screen Attributes
         screen_size = QDesktopWidget().availableGeometry()
@@ -353,6 +370,9 @@ class MyMainWindow(QWidget):
         self.cbb_plot_cctr.setCurrentIndex(self.m.color)
         self.cbb_plot_cctr.currentIndexChanged.connect(self.change_color)
 
+        btn_show_img = QPushButton("Show image")
+        btn_show_img.clicked.connect(lambda: self.m.show_img(self.raw_bayer_data))
+
         lyt_cctr = QHBoxLayout()
         lyt_cctr.addWidget(QLabel("Layer:"))
         lyt_cctr.addWidget(self.cbb_plot_cctr)
@@ -369,6 +389,7 @@ class MyMainWindow(QWidget):
         lyt_btn.addWidget(btn_plot_pic)
         lyt_btn.addLayout(lyt_cctr)
         lyt_btn.addWidget(btn_reset_slider)
+        lyt_btn.addWidget(btn_show_img)
         lyt_btn.addStretch(1)
         lyt_btn.addWidget(btn_close)
 
@@ -439,12 +460,12 @@ class MyMainWindow(QWidget):
 
         # PiBayerArray
         # http://picamera.readthedocs.io/en/release-1.13/api_array.html#pibayerarray
-        my_pic_dat = picamera.array.PiBayerArray(self.camera)
-        self.camera.capture(my_pic_dat, 'rgb')
+        self.raw_bayer_data = picamera.array.PiBayerArray(self.camera)
+        self.camera.capture(self.raw_bayer_data, 'jpeg', bayer=True)
         self.camera.stop_preview()
         self.txt_info.append("Picture taken!")
         self.m.img_title = "Last Taken Picture (raw)"
-        self.m.last_img = my_pic_dat.array
+        self.m.last_img = self.raw_bayer_data.array
         self.exec_calc()
 
     def change_color(self):
