@@ -1,0 +1,11 @@
+*.*
+
+!.gitignore
+!*.py
+!_config.yml
+!example_spot.bmp
+!RB-CAMERA-WWDATENBLATT.pdf
+!README.md
+!RPi_laserspot_analyzer.py
+!what_it_should_look_like.png
+
