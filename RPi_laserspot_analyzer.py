@@ -21,6 +21,7 @@ from PyQt5.QtCore import *
 picamfound = util.find_spec("picamera") is not None
 if picamfound:
     import picamera
+    from picamera.array import PiRGBArray
 else:
     print("No picamera module found, camera not available!")
 
