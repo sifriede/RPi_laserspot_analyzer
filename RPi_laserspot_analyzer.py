@@ -21,7 +21,7 @@ from PyQt5.QtCore import *
 picamfound = util.find_spec("picamera") is not None
 if picamfound:
     import picamera
-    from picamera.array import PiRGBArray
+    from picamera.array import PiBayerArray
 else:
     print("No picamera module found, camera not available!")
 
@@ -393,6 +393,7 @@ class MyMainWindow(QWidget):
             return
         if btn.isChecked():
             self.txt_info.append("Live view started")
+            self.txt_info.append("Camera resolution: {}x{}".format(*self.camera.resolution))
             self.btn_live_view.setText("Stop Live View")
             self.camera.my_start_preview()
 
@@ -435,16 +436,15 @@ class MyMainWindow(QWidget):
         now = datetime.datetime.now()
         self.camera.my_start_preview()
         time.sleep(1)
-        my_pic = '{}_image.bmp'.format(now.strftime("%Y-%m-%d_%H%M%S"))
-        # my_pic_dat = picamera.array.PiRGBArray(self.camera)
-        my_pic_dat = np.empty((self.camera.resolution[1], self.camera.resolution[0], 3), dtype=np.uint8)
-        self.txt_info.append("Camera resolution: {}x{}".format(*self.camera.resolution))
-        self.camera.capture(my_pic)
+
+        # PiBayerArray
+        # http://picamera.readthedocs.io/en/release-1.13/api_array.html#pibayerarray
+        my_pic_dat = picamera.array.PiBayerArray(self.camera)
         self.camera.capture(my_pic_dat, 'rgb')
         self.camera.stop_preview()
         self.txt_info.append("Picture taken!")
-        self.m.img_title = my_pic
-        self.m.last_img = my_pic_dat
+        self.m.img_title = "Last Taken Picture (raw)"
+        self.m.last_img = my_pic_dat.array
         self.exec_calc()
 
     def change_color(self):
