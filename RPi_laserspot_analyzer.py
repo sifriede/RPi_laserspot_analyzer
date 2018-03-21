@@ -32,6 +32,7 @@ version = 1.3
 class MyEvent(QObject):
     my_event = pyqtSignal()
 
+
 if picamfound:
     class MyCamera(picamera.PiCamera):
         def __init__(self, left=100, top=100, width=1024, height=768):
@@ -81,7 +82,7 @@ class PlotAnalyseCanvas(FigureCanvas):
         self.color = 1
 
         # Miscellaneous
-        self.rslt_str = "No results yet"
+        self.last_rslt_str = "No results yet"
         self.error_msg = None
         self.img_title = None
 
@@ -98,50 +99,6 @@ class PlotAnalyseCanvas(FigureCanvas):
     @staticmethod
     def gaussian(x, a, x0, sigma, offset):
         return a / (sigma * np.sqrt(2 * np.pi)) * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2)) - offset
-
-    def change_center(self, x, y):
-        self.mean_img_x = x
-        self.mean_img_y = y
-        # Debug
-        print('New center: x,y = ({},{})'.format(x, y))
-
-    def change_color_channel(self, color=1):
-        self.color = color
-
-    def reset_mean_val(self, img_data):
-        self.mean_img_x = int(np.round(img_data.shape[1] / 2))
-        self.mean_img_y = int(np.round(img_data.shape[0] / 2))
-
-    def show_img(self, pic=None):
-        print("Type(pic) = {}".format(type(pic)))
-        if pic is None:
-            self.error_msg = "No image selected yet"
-            print(self.error_msg)
-            return self.error_msg
-        elif type(pic) is picamera.array.PiBayerArray:
-            plt.imshow(pic.demosaic())
-            plt.show()
-        elif type(pic) is np.ndarray:
-            plt.imshow(pic)
-            plt.show()
-
-
-    def img_to_data(self):
-        if self.last_img is None:
-            self.error_msg = "No image selected yet"
-            print(self.error_msg)
-            return self.error_msg
-        elif type(self.last_img) is str:
-            self.img_title = self.last_img
-            self.last_img = mpimg.imread(self.last_img)
-            print(type(self.last_img))
-        elif type(self.last_img) is np.ndarray:
-            pass
-        else:
-            self.error_msg = "Could not read image file: type(image) = {}".format(type(self.last_img))
-            print(self.error_msg)
-            return self.error_msg
-        self.calc_data()
 
     def calc_data(self):
         if type(self.last_img) is np.ndarray:
@@ -185,9 +142,9 @@ class PlotAnalyseCanvas(FigureCanvas):
         self.last_rslt = [2 * x * self.pxl2um for x in
                           [2 * self.data_x_rslt[0][2], 2 * np.sqrt(self.data_x_rslt[1][2, 2]),
                            2 * self.data_y_rslt[0][2], 2 * np.sqrt(self.data_y_rslt[1][2, 2])]]
-        self.rslt_str = "{}\n" \
-                        "sigma_(x,rms) = ({:.2f} +/- {:.2f}) um\n" \
-                        "sigma_(y,rms) = ({:.2f} +/- {:.2f}) um\n" \
+        self.last_rslt_str = "{}\n" \
+                             "sigma_(x,rms) = ({:.2f} +/- {:.2f}) um\n" \
+                             "sigma_(y,rms) = ({:.2f} +/- {:.2f}) um\n" \
             .format(now.strftime("%Y-%m-%d %H:%M:%S"), *self.last_rslt)
         print("Finished Calculating! Results:\n")
         print("amp_x= {}, mu_x = {:.2f}, sigma_x = {:.2f}, offset_x = {:.2f}".format(*popt_x))
@@ -196,6 +153,33 @@ class PlotAnalyseCanvas(FigureCanvas):
         print("pcov_y = {}".format(pcov_y))
 
         self.plot()
+
+    def change_center(self, x, y):
+        self.mean_img_x = x
+        self.mean_img_y = y
+        # Debug
+        print('New center: x,y = ({},{})'.format(x, y))
+
+    def change_color_channel(self, color=1):
+        self.color = color
+        self.calc_data()
+
+    def img_to_data(self):
+        if self.last_img is None:
+            self.error_msg = "No image selected yet"
+            print(self.error_msg)
+            return self.error_msg
+        elif type(self.last_img) is str:
+            self.img_title = self.last_img
+            self.last_img = mpimg.imread(self.last_img)
+            print(type(self.last_img))
+        elif type(self.last_img) is np.ndarray:
+            pass
+        else:
+            self.error_msg = "Could not read image file: type(image) = {}".format(type(self.last_img))
+            print(self.error_msg)
+            return self.error_msg
+        self.calc_data()
 
     def plot(self):
         # Grid
@@ -219,9 +203,7 @@ class PlotAnalyseCanvas(FigureCanvas):
         # Colorbar
         ax_image_cb = self.figure.add_subplot(gs[:-1, -1])
         ax_image_cb.set_label('Intensity')
-        cbar = self.figure.colorbar(im, cax=ax_image_cb)
-        # cbar.set_ticks([0, .25, .5, .75, 255])
-        # cbar.set_ticklabels(['0', '25%', '50%', '75%', '100%'])
+        self.figure.colorbar(im, cax=ax_image_cb)
 
         # Second x and y axis in micrometer
         scld_xticks = np.around(self.pxl2um * np.arange(min(self.data_x[0]), max(self.data_x[0]), 125), 2)
@@ -249,6 +231,22 @@ class PlotAnalyseCanvas(FigureCanvas):
         ax_x.plot(self.data_x[0], self.gaussian(self.data_x[0], *self.data_x_rslt[0]))
 
         self.draw()
+
+    def reset_mean_val(self, img_data):
+        self.mean_img_x = int(np.round(img_data.shape[1] / 2))
+        self.mean_img_y = int(np.round(img_data.shape[0] / 2))
+
+    def show_img(self, pic=None):
+        if pic is None:
+            self.error_msg = "No image selected yet"
+            print(self.error_msg)
+            return self.error_msg
+        elif type(pic) is picamera.array.PiBayerArray:
+            plt.imshow(pic.demosaic())
+            plt.show()
+        elif type(pic) is np.ndarray:
+            plt.imshow(pic)
+            plt.show()
 
 
 class MyMainWindow(QWidget):
@@ -371,7 +369,7 @@ class MyMainWindow(QWidget):
         self.cbb_plot_cctr.currentIndexChanged.connect(self.change_color)
 
         btn_show_img = QPushButton("Show image")
-        btn_show_img.clicked.connect(lambda: self.m.show_img(self.raw_bayer_data))
+        btn_show_img.clicked.connect(self.show_img(self.raw_bayer_data))
 
         lyt_cctr = QHBoxLayout()
         lyt_cctr.addWidget(QLabel("Layer:"))
@@ -405,8 +403,55 @@ class MyMainWindow(QWidget):
         self.setWindowTitle('Another low budget Beam Profiler Version {}'.format(version))
         self.show()
 
-    def test_emit_close_signal(self):
-        self.sig.my_event.emit()
+    def change_color(self):
+        if self.m.last_img is None:
+            self.txt_info.append("No image selected yet")
+            return
+        self.txt_info.append("Color {} selected".format(self.cbb_plot_cctr.currentText()))
+        self.m.change_color_channel(self.cbb_plot_cctr.currentIndex())
+        self.exec_calc()
+
+    def choose_file(self):
+        self.txt_info.append("Please choose a picture...")
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontUseNativeDialog
+        my_img, _ = QFileDialog.getOpenFileName(self, "QFileDialog.getOpenFileName()", "",
+                                                "Images (*.png *.jpg *.tiff *.bmp);;All Files (*)", options=options)
+        if my_img:
+            self.txt_info.append('{} chosen'.format(my_img))
+            self.m.last_img = my_img
+            self.exec_calc()
+
+    def exec_calc(self):
+        self.m.img_to_data()
+        self.txt_rslt.append(self.m.last_rslt_str)
+        time.sleep(.5)
+        self.set_slider()
+        self.ln_edt_latest_rslt()
+        self.txt_rslt.append(str(self.m.last_rslt))
+
+    def ln_edt_latest_rslt(self):
+        FWHM = [np.sqrt(2 * np.log(2)) * x for x in self.m.last_rslt]
+        self.ln_edt_x.setText('({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[:2]))
+        self.ln_edt_wx.setText('({:.2f} +/- {:.2f}) um'.format(*FWHM[:2]))
+        self.ln_edt_y.setText('({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[2:]))
+        self.ln_edt_wy.setText('({:.2f} +/- {:.2f}) um'.format(*FWHM[2:]))
+
+    def reset_slider(self):
+        if self.m.last_img is None:
+            self.txt_info.append("No image selected yet")
+            return
+        self.m.reset_mean_val(self.m.last_img)
+        self.exec_calc()
+
+    def set_slider(self):
+        self.sp_m_x.setMinimum(min(self.m.data_x[0]))
+        self.sp_m_x.setMaximum(max(self.m.data_x[0]))
+        self.sp_m_x.setValue(self.m.mean_img_x)
+
+        self.sp_m_y.setMinimum(min(self.m.data_y[0]))
+        self.sp_m_y.setMaximum(max(self.m.data_y[0]))
+        self.sp_m_y.setValue(self.m.mean_img_y)
 
     def start_live_view(self, btn):
         if not picamfound:
@@ -423,32 +468,10 @@ class MyMainWindow(QWidget):
             self.camera.stop_preview()
             self.btn_live_view.setText("Start Live View")
 
-    def choose_file(self):
-        self.txt_info.append("Please choose a picture...")
-        options = QFileDialog.Options()
-        options |= QFileDialog.DontUseNativeDialog
-        my_img, _ = QFileDialog.getOpenFileName(self, "QFileDialog.getOpenFileName()", "",
-                                                "Images (*.png *.jpg *.tiff *.bmp);;All Files (*)", options=options)
-        if my_img:
-            self.txt_info.append('{} chosen'.format(my_img))
-            self.m.last_img = my_img
-            self.exec_calc()
-
-    def set_slider(self):
-        self.sp_m_x.setMinimum(min(self.m.data_x[0]))
-        self.sp_m_x.setMaximum(max(self.m.data_x[0]))
-        self.sp_m_x.setValue(self.m.mean_img_x)
-
-        self.sp_m_y.setMinimum(min(self.m.data_y[0]))
-        self.sp_m_y.setMaximum(max(self.m.data_y[0]))
-        self.sp_m_y.setValue(self.m.mean_img_y)
-
-    def reset_slider(self):
-        if self.m.last_img is None:
-            self.txt_info.append("No image selected yet")
-            return
-        self.m.reset_mean_val(self.m.last_img)
-        self.exec_calc()
+    def show_img(self):
+        self.txt_info.append("Showing picture (this may take some time)...")
+        self.m.show_img(self.raw_bayer_data)
+        self.txt_info.append("Showing picture done.")
 
     def take_picture(self):
         if not picamfound:
@@ -468,34 +491,14 @@ class MyMainWindow(QWidget):
         self.m.last_img = self.raw_bayer_data.array
         self.exec_calc()
 
-    def change_color(self):
-        if self.m.last_img is None:
-            self.txt_info.append("No image selected yet")
-            return
-        self.txt_info.append("Color {} selected".format(self.cbb_plot_cctr.currentText()))
-        self.m.change_color_channel(self.cbb_plot_cctr.currentIndex())
-        self.exec_calc()
+    def test_emit_close_signal(self):
+        self.sig.my_event.emit()
 
     def change_mean_val(self):
         self.m.mean_img_x = self.sp_m_x.value()
         self.m.mean_img_y = self.sp_m_y.value()
         if self.m.last_img is not None:
             self.exec_calc()
-
-    def set_latest_rslt(self):
-        FWHM = [np.sqrt(2 * np.log(2)) * x for x in self.m.last_rslt]
-        self.ln_edt_x.setText('({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[:2]))
-        self.ln_edt_wx.setText('({:.2f} +/- {:.2f}) um'.format(*FWHM[:2]))
-        self.ln_edt_y.setText('({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[2:]))
-        self.ln_edt_wy.setText('({:.2f} +/- {:.2f}) um'.format(*FWHM[2:]))
-
-    def exec_calc(self):
-        self.m.img_to_data()
-        self.txt_rslt.append(self.m.rslt_str)
-        time.sleep(.5)
-        self.set_slider()
-        self.set_latest_rslt()
-        self.txt_rslt.append(str(self.m.last_rslt))
 
 
 if __name__ == '__main__':
