@@ -42,8 +42,6 @@ if picamfound:
             self.prev_width, self.prev_height = width, height
 
             self.imageres = [1024, 768]
-            # Pixel to um
-            self.pxl2um = 3.76 / 2592
 
             # set camera resolution, gain , sutter speed and framerate
             self.resolution = (self.imageres[0], self.imageres[1])
@@ -486,6 +484,8 @@ class MyMainWindow(QWidget):
         self.raw_bayer_data = picamera.array.PiBayerArray(self.camera)
         self.camera.capture(self.raw_bayer_data, 'jpeg', bayer=True)
         self.camera.stop_preview()
+        self.btn_live_view.setChecked(False)
+        self.btn_live_view.setText("Start Live View")
         self.txt_info.append("Picture taken!")
         self.m.img_title = "Last Taken Picture (raw)"
         self.m.last_img = self.raw_bayer_data.array
