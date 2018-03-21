@@ -70,9 +70,8 @@ class PlotAnalyseCanvas(FigureCanvas):
         self.last_img = None
         self.last_rslt = None
         self.img_color = None
-        self.mean_img_x, self.mean_img_y = None, None
-        self.sigma_x, self.sigma_y = 200, 200
-        self.offset_x, self.offset_y = None, None
+        self.initial_fit_x = [None, None, None, None, None]  # amplitude, mu, sigma, offset, order
+        self.initial_fit_y = [None, None, None, None, None]  # amplitude, mu, sigma, offset, order
         self.data_x, self.data_y = None, None
         self.data_x_rslt, self.data_y_rslt = None, None
 
@@ -95,10 +94,16 @@ class PlotAnalyseCanvas(FigureCanvas):
         FigureCanvas.updateGeometry(self)
 
     @staticmethod
-    def gaussian(x, a, x0, sigma, offset):
-        return a / (sigma * np.sqrt(2 * np.pi)) * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2)) - offset
+    def gaussian(x, a, mu, sigma, offset):
+        return a / (sigma * np.sqrt(2 * np.pi)) * np.exp(-(x - mu) ** 2 / (2 * sigma ** 2)) - offset
+
+    @staticmethod
+    def func(x, a, mu, sigma, offset, p=1):
+        # return a / (sigma * np.sqrt(2 * np.pi)) * np.exp(-((x - mu) ** 2 / (2 * sigma ** 2)) ** p) - offset
+        return a * np.exp(-((x - mu) ** 2 / (2 * sigma ** 2)) ** p) - offset
 
     def calc_data(self):
+        # Check self.last_img
         if type(self.last_img) is np.ndarray:
             img_data = self.last_img
         else:
@@ -107,31 +112,43 @@ class PlotAnalyseCanvas(FigureCanvas):
             return self.error_msg
 
         print("Start Calculating...")
-        if self.mean_img_x is None or self.mean_img_y is None:
+        if self.initial_fit_x[1] is None or self.initial_fit_y[1] is None:
             self.reset_mean_val(img_data)
+            print("initial_fits: x = {}, y = {}".format(self.initial_fit_x, self.initial_fit_y))
 
-        print("mean_img_x, mean_img_y = ({}, {})".format(self.mean_img_x, self.mean_img_y))
-
+        # Select image color channel
         self.img_color = img_data[:, :, self.color]
 
+        # Define x and y values from selected image
         x_x = np.linspace(0, len(self.img_color[0, :]), len(self.img_color[0, :]))
-        x_y = self.img_color[self.mean_img_y, :] / sum(self.img_color[self.mean_img_y, :])
+        x_y = self.img_color[self.initial_fit_y[1], :] / sum(self.img_color[self.initial_fit_y[1], :])
         self.data_x = [x_x, x_y]
-        self.offset_x = min(x_y)
 
         y_x = np.linspace(0, len(self.img_color[:, 0]), len(self.img_color[:, 0]))
-        y_y = self.img_color[:, self.mean_img_x] / sum(self.img_color[:, self.mean_img_x])
+        y_y = self.img_color[:, self.initial_fit_x[1]] / sum(self.img_color[:, self.initial_fit_x[1]])
         self.data_y = [y_x, y_y]
-        self.offset_y = min(y_y)
+
+        # Initial fit parameter: amplitude, mu, sigma, offset, order
+        # Todo find better sigma initial value
+        # ToDo create Dialog to change these parameters
+        if any(itm is None for itm in self.initial_fit_x):
+            self.initial_fit_x = [1, self.initial_fit_x[1], 200, min(x_y), 1]
+        if any(itm is None for itm in self.initial_fit_y):
+            self.initial_fit_y = [1, self.initial_fit_y[1], 200, min(y_y), 1]
+
+        print("initial_fits: x = {}, y = {}".format(self.initial_fit_x, self.initial_fit_y))
 
         try:
-            popt_x, pcov_x = curve_fit(self.gaussian, self.data_x[0], self.data_x[1],
-                                       p0=[1, self.mean_img_x, self.sigma_x, self.offset_x])
-            popt_y, pcov_y = curve_fit(self.gaussian, self.data_y[0], self.data_y[1],
-                                       p0=[1, self.mean_img_y, self.sigma_y, self.offset_y])
+            popt_x, pcov_x = curve_fit(self.func, self.data_x[0], self.data_x[1],
+                                       p0=self.initial_fit_x)
+            popt_y, pcov_y = curve_fit(self.func, self.data_y[0], self.data_y[1],
+                                       p0=self.initial_fit_y)
+
         except:
-            popt_x, popt_y = [[0, 0, 1, 0], [0, 0, 1, 0]]
-            pcov_x, pcov_y = np.zeros((4, 4)), np.zeros((4, 4))
+            idx = len(self.initial_fit_x)
+            popt_x, popt_y = np.zeros(idx), np.zeros(idx)
+            popt_x[2], popt_y[2] = 1, 1
+            pcov_x, pcov_y = np.zeros((idx, idx)), np.zeros((idx, idx))
 
         self.data_x_rslt = [popt_x, pcov_x]
         self.data_y_rslt = [popt_y, pcov_y]
@@ -145,22 +162,17 @@ class PlotAnalyseCanvas(FigureCanvas):
                              "sigma_(y,rms) = ({:.2f} +/- {:.2f}) um\n" \
             .format(now.strftime("%Y-%m-%d %H:%M:%S"), *self.last_rslt)
         print("Finished Calculating! Results:\n")
-        print("amp_x= {}, mu_x = {:.2f}, sigma_x = {:.2f}, offset_x = {:.2f}".format(*popt_x))
-        print("pcov_x = {}".format(pcov_x))
-        print("amp_y= {}, mu_y = {:.2f}, sigma_y = {:.2f}, offset_y = {:.2f}".format(*popt_y))
-        print("pcov_y = {}".format(pcov_y))
+        print("initial_fits: x = {}, y = {}".format(self.initial_fit_x, self.initial_fit_y))
+        print("final fit: x = {}, y = {}".format(popt_x, popt_y))
 
         self.plot()
 
     def change_center(self, x, y):
-        self.mean_img_x = x
-        self.mean_img_y = y
-        # Debug
-        print('New center: x,y = ({},{})'.format(x, y))
+        self.initial_fit_x[1] = x
+        self.initial_fit_y[1] = y
 
     def change_color_channel(self, color=1):
         self.color = color
-        self.calc_data()
 
     def img_to_data(self):
         if self.last_img is None:
@@ -184,22 +196,30 @@ class PlotAnalyseCanvas(FigureCanvas):
         gs = gridspec.GridSpec(2, 3, hspace=.25, wspace=.3,
                                width_ratios=[4, 16, 1], height_ratios=[4, 1])
 
+        # Clear last figure
         self.figure.clf()
 
+        # Define axes in figure
         ax_image = self.figure.add_subplot(gs[:-1, 1:-1])
+        ax_image_cb = self.figure.add_subplot(gs[:-1, -1])
+        ax_y = self.figure.add_subplot(gs[:-1, 0], sharey=ax_image)
+
+        # Image, horizontal and vertical lines
         ax_image.autoscale(False)
         im = ax_image.imshow(self.img_color, cmap='jet', aspect='auto')
-        ax_image.axhline(self.mean_img_y, color='w')
-        ax_image.axvline(self.mean_img_x, color='w')
-        ax_image.set_title(self.img_title, y=1.12)
+        ax_x = self.figure.add_subplot(gs[-1, 1:-1], sharex=ax_image)
+
+        ax_image.axhline(self.initial_fit_y[1], color='w')
+        ax_image.axvline(self.initial_fit_x[1], color='w')
+
         ax_image.set_xlim(0, max(self.data_x[0]))
         ax_image.set_ylim(max(self.data_y[0]), 0)
         ax_image.set_xlabel('x in pixel')
         ax_image.set_ylabel('y in pixel')
+        ax_image.set_title(self.img_title, y=1.12)
         ax_image.grid(color='w', alpha=0.5, linestyle='dashed', linewidth=0.5)
 
         # Colorbar
-        ax_image_cb = self.figure.add_subplot(gs[:-1, -1])
         ax_image_cb.set_label('Intensity')
         self.figure.colorbar(im, cax=ax_image_cb)
 
@@ -216,23 +236,22 @@ class PlotAnalyseCanvas(FigureCanvas):
         ax_image_y2.invert_yaxis()
         ax_image_y2.set_ylabel("Micrometer")
 
-        ax_y = self.figure.add_subplot(gs[:-1, 0], sharey=ax_image)
+        # Data and fits
         ax_y.autoscale(axis='y', enable=False)
         ax_y.grid(color='b', alpha=0.5, linestyle='dashed', linewidth=0.5)
         ax_y.plot(self.data_y[1], self.data_y[0])
-        ax_y.plot(self.gaussian(self.data_y[0], *self.data_y_rslt[0]), self.data_y[0])
-        #
-        ax_x = self.figure.add_subplot(gs[-1, 1:-1], sharex=ax_image)
+        ax_y.plot(self.func(self.data_y[0], *self.data_y_rslt[0]), self.data_y[0])
+
         ax_x.autoscale(axis='x', enable=False)
         ax_x.grid(color='b', alpha=0.5, linestyle='dashed', linewidth=0.5)
         ax_x.plot(self.data_x[0], self.data_x[1])
-        ax_x.plot(self.data_x[0], self.gaussian(self.data_x[0], *self.data_x_rslt[0]))
+        ax_x.plot(self.data_x[0], self.func(self.data_x[0], *self.data_x_rslt[0]))
 
         self.draw()
 
     def reset_mean_val(self, img_data):
-        self.mean_img_x = int(np.round(img_data.shape[1] / 2))
-        self.mean_img_y = int(np.round(img_data.shape[0] / 2))
+        self.initial_fit_x[1] = int(np.round(img_data.shape[1] / 2))
+        self.initial_fit_y[1] = int(np.round(img_data.shape[0] / 2))
 
     def show_img(self, pic=None):
         if pic is None:
@@ -247,6 +266,9 @@ class PlotAnalyseCanvas(FigureCanvas):
             plt.show()
 
 
+#############################
+# Main Window
+#############################
 class MyMainWindow(QWidget):
     # Pixel to um
     pxl2um = 3760 / 2592
@@ -366,8 +388,8 @@ class MyMainWindow(QWidget):
         self.cbb_plot_cctr.setCurrentIndex(self.m.color)
         self.cbb_plot_cctr.currentIndexChanged.connect(self.change_color)
 
-        btn_show_img = QPushButton("Show image")
-        btn_show_img.clicked.connect(self.show_img(self.raw_bayer_data))
+        btn_show_img = QPushButton("Display converted raw image data")
+        btn_show_img.clicked.connect(self.show_img)
 
         lyt_cctr = QHBoxLayout()
         lyt_cctr.addWidget(QLabel("Layer:"))
@@ -429,7 +451,7 @@ class MyMainWindow(QWidget):
         self.txt_rslt.append(str(self.m.last_rslt))
 
     def ln_edt_latest_rslt(self):
-        FWHM = [np.sqrt(2 * np.log(2)) * x for x in self.m.last_rslt]
+        FWHM = [np.sqrt(2) * np.log(2)**(1/self.m.data_x_rslt[0][4]) * x for x in self.m.last_rslt]
         self.ln_edt_x.setText('({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[:2]))
         self.ln_edt_wx.setText('({:.2f} +/- {:.2f}) um'.format(*FWHM[:2]))
         self.ln_edt_y.setText('({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[2:]))
@@ -445,11 +467,11 @@ class MyMainWindow(QWidget):
     def set_slider(self):
         self.sp_m_x.setMinimum(min(self.m.data_x[0]))
         self.sp_m_x.setMaximum(max(self.m.data_x[0]))
-        self.sp_m_x.setValue(self.m.mean_img_x)
+        self.sp_m_x.setValue(self.m.initial_fit_x[1])
 
         self.sp_m_y.setMinimum(min(self.m.data_y[0]))
         self.sp_m_y.setMaximum(max(self.m.data_y[0]))
-        self.sp_m_y.setValue(self.m.mean_img_y)
+        self.sp_m_y.setValue(self.m.initial_fit_y[1])
 
     def start_live_view(self, btn):
         if not picamfound:
@@ -467,6 +489,9 @@ class MyMainWindow(QWidget):
             self.btn_live_view.setText("Start Live View")
 
     def show_img(self):
+        if self.raw_bayer_data is None:
+            self.txt_info.append("No raw image data found")
+            return
         self.txt_info.append("Showing picture (this may take some time)...")
         self.m.show_img(self.raw_bayer_data)
         self.txt_info.append("Showing picture done.")
@@ -495,8 +520,8 @@ class MyMainWindow(QWidget):
         self.sig.my_event.emit()
 
     def change_mean_val(self):
-        self.m.mean_img_x = self.sp_m_x.value()
-        self.m.mean_img_y = self.sp_m_y.value()
+        self.m.initial_fit_x[1] = self.sp_m_x.value()
+        self.m.initial_fit_y[1] = self.sp_m_y.value()
         if self.m.last_img is not None:
             self.exec_calc()
 
