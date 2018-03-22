@@ -26,7 +26,7 @@ if picamfound:
 else:
     print("No picamera module found, camera not available!")
 
-version = 1.3
+version = 1.4
 
 
 class MyEvent(QObject):
@@ -312,15 +312,16 @@ class PlotAnalyseCanvas(FigureCanvas):
 #############################
 # Main Window
 #############################
-class MyMainWindow(QWidget):
+class MyMainWindow(QMainWindow):
     # Pixel to um
     pxl2um = 3760 / 2592
 
     def __init__(self, parent=None):
         super(MyMainWindow, self).__init__(parent)
-        # Initial Parameters
-        self.raw_bayer_data = None
 
+        self.initUi()
+
+    def initUi(self):
         # Screen Attributes
         screen_size = QDesktopWidget().availableGeometry()
         screen_res = [screen_size.width(), screen_size.height()]
@@ -331,23 +332,51 @@ class MyMainWindow(QWidget):
         self.my_height = round(0.8 * screen_res[1])
         self.my_width = self.my_height * 4 / 3  # round(0.8 * screen_res[0])
 
+        self.form_widget = FormWidget(self)
+        self.setCentralWidget(self.form_widget)
+
+        # Menu bar
+        exitAct = QAction('&Exit', self)
+        exitAct.setShortcut('Ctrl+Q')
+        exitAct.setStatusTip('Exit application')
+        exitAct.triggered.connect(qApp.quit)
+        menubar = self.menuBar()
+        filemenu = menubar.addMenu('&File')
+        filemenu.addAction(exitAct)
+
+        self.setGeometry(self.my_left, self.my_top, self.my_width, self.my_height)
+        global version
+        self.setWindowTitle('Another low budget Beam Profiler Version {}'.format(version))
+        self.show()
+
+
+#############################
+# Form Widget
+#############################
+class FormWidget(QWidget):
+
+    def __init__(self, parent):
+        super(FormWidget, self).__init__(parent)
+        # Initial Parameters
+        self.raw_bayer_data = None
+
         # Test Event
         self.sig = MyEvent()
 
         # Initialize camera
-        preview = [round(x) for x in [self.my_left, self.my_top,
-                                      0.8 * self.my_width, 0.8 * self.my_height]]
+        preview = [round(x) for x in [parent.my_left, parent.my_top,
+                                      0.8 * parent.my_width, 0.8 * parent.my_height]]
         if picamfound:
             self.camera = MyCamera(*preview)
 
         # Initialize UI
-        self.init_ui()
+        self.init_ui(parent)
 
-    def init_ui(self):
+    def init_ui(self, parent):
         self.sig.my_event.connect(self.close)
 
         # FigureCanvas
-        self.m = PlotAnalyseCanvas(None, 2*self.my_width, 2 * self.my_height)
+        self.m = PlotAnalyseCanvas(None, 2 * parent.my_width, 2 * parent.my_height)
         self.m_toolbar = NavigationToolbar(self.m, self)
 
         # Slider to change Plot
@@ -374,29 +403,28 @@ class MyMainWindow(QWidget):
         self.ln_edt_wy = QLineEdit()
         self.ln_edt_wy.setText("No results yet")
 
-        lbl_font = QFont("Helvetica", 12)
-        lbl_x = QLabel("2\u00b7\u03c3<sub>x,rms</sub>:")
-        lbl_x.setFont(lbl_font)
-        lbl_wx = QLabel("FWHM<sub>x</sub>:")
-        lbl_wx.setFont(lbl_font)
-        lbl_y = QLabel("2\u00b7\u03c3<sub>y,rms</sub>:")
-        lbl_y.setFont(lbl_font)
-        lbl_wy = QLabel("FWHM<sub>y</sub>:")
-        lbl_wy.setFont(lbl_font)
-
-        lyt_rslt = QGridLayout()
-        lyt_rslt.addWidget(lbl_x, 0, 0)
-        lyt_rslt.addWidget(self.ln_edt_x, 0, 1)
-        lyt_rslt.addWidget(lbl_wx, 0, 2)
-        lyt_rslt.addWidget(self.ln_edt_wx, 0, 3)
-        lyt_rslt.addWidget(lbl_y, 1, 0)
-        lyt_rslt.addWidget(self.ln_edt_y, 1, 1)
-        lyt_rslt.addWidget(lbl_wy, 1, 2)
-        lyt_rslt.addWidget(self.ln_edt_wy, 1, 3)
+        # Tables
+        self.tbl = QTableWidget()
+        self.tbl.setObjectName("table_view")
+        self.tbl.setRowCount(2)
+        self.tbl.setColumnCount(3)
+        self.tbl.setMinimumHeight(100)
+        tbl_col = ["2\u00b7\u03c3_rms", "FWHM", "Gaussian order"]
+        tbl_row = ["x", "y"]
+        self.tbl_indices = [[i, j] for i in range(self.tbl.rowCount()) for j in range(self.tbl.columnCount())]
+        for i in range(self.tbl.columnCount()):
+            self.tbl.horizontalHeader().setSectionResizeMode(i, QHeaderView.Stretch)
+            self.tbl.setHorizontalHeaderItem(i, QTableWidgetItem(tbl_col[i]))
+        for i in range(self.tbl.rowCount()):
+            self.tbl.verticalHeader().setSectionResizeMode(i, QHeaderView.Stretch)
+            self.tbl.setVerticalHeaderItem(i, QTableWidgetItem(tbl_row[i]))
+        for idx in self.tbl_indices:
+            self.tbl.setItem(*idx, QTableWidgetItem("No Results yet"))
 
         lyt_nav = QHBoxLayout()
         lyt_nav.addWidget(self.m_toolbar)
-        lyt_nav.addLayout(lyt_rslt)
+        # lyt_nav.addLayout(lyt_rslt)
+        lyt_nav.addWidget(self.tbl)
 
         # Info and result box
         lbl_info = QLabel("Info")
@@ -443,8 +471,7 @@ class MyMainWindow(QWidget):
         lyt_cctr.addWidget(self.cbb_plot_cctr)
 
         btn_close = QPushButton("Close")
-        btn_close.clicked.connect(self.test_emit_close_signal)
-
+        btn_close.clicked.connect(qApp.quit)
         btn_reset_slider = QPushButton("Center Slider")
         btn_reset_slider.clicked.connect(self.reset_slider)
 
@@ -458,17 +485,14 @@ class MyMainWindow(QWidget):
         lyt_btn.addStretch(1)
         lyt_btn.addWidget(btn_close)
 
-        lyt_vrt = QVBoxLayout()
-        lyt_vrt.addLayout(lyt_plt)
-        lyt_vrt.addLayout(lyt_nav)
-        lyt_vrt.addLayout(lyt_txt)
-        lyt_vrt.addLayout(lyt_btn)
+        # global layout
+        lyt_glob = QVBoxLayout()
+        lyt_glob.addLayout(lyt_plt)
+        lyt_glob.addLayout(lyt_nav)
+        lyt_glob.addLayout(lyt_txt)
+        lyt_glob.addLayout(lyt_btn)
 
-        self.setLayout(lyt_vrt)
-        self.setGeometry(self.my_left, self.my_top, self.my_width, self.my_height)
-        global version
-        self.setWindowTitle('Another low budget Beam Profiler Version {}'.format(version))
-        self.show()
+        self.setLayout(lyt_glob)
 
     def change_color(self):
         if self.m.last_img is None:
@@ -501,7 +525,8 @@ class MyMainWindow(QWidget):
         time.sleep(.5)
         # Adopt slider to image axis
         self.set_slider()
-        self.ln_edt_latest_rslt()
+        # self.ln_edt_latest_rslt()
+        self.write_to_table()
 
     def ln_edt_latest_rslt(self):
         FWHMx = [np.sqrt(2) * np.log(2) ** (1 / self.m.order_x) * x for x in self.m.last_rslt[:2]]
@@ -580,6 +605,23 @@ class MyMainWindow(QWidget):
         self.m.init_y["mu"] = self.sp_m_y.value()
         if self.m.last_img is not None:
             self.exec_calc()
+
+    def write_to_table(self):
+        print("\n\nwrite_to_table")
+        if self.m.last_rslt is None:
+            self.txt_info.append("No results yet")
+            return None
+        FWHMx = [np.sqrt(2) * np.log(2) ** (1 / self.m.order_x) * x for x in self.m.last_rslt[:2]]
+        FWHMy = [np.sqrt(2) * np.log(2) ** (1 / self.m.order_y) * y for y in self.m.last_rslt[2:]]
+        sigm_x = '({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[:2])
+        fwhm_x = '({:.2f} +/- {:.2f}) um'.format(*FWHMx)
+        sigm_y = '({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[2:])
+        fwhm_y = '({:.2f} +/- {:.2f}) um'.format(*FWHMy)
+        print("Results:")
+        temp_zip = zip(self.tbl_indices, [sigm_x, fwhm_x, self.m.order_x, sigm_y, fwhm_y, self.m.order_y])
+
+        for idx in temp_zip:
+            self.tbl.setItem(*idx[0], QTableWidgetItem(str(idx[1])))
 
 
 if __name__ == '__main__':
