@@ -115,8 +115,11 @@ class PlotAnalyseCanvas(FigureCanvas):
         if self.init_x['mu'] is None or self.init_y['mu'] is None:
             self.reset_mean_val(img_data)
 
-        # Select image color channel
-        self.img_color = img_data[:, :, self.color]
+        # Select image color channel (if not already given by data)
+        if img_data.ndim == 2:
+            self.img_color = img_data
+        else:
+            self.img_color = img_data[:, :, self.color]
 
         # Define x and y values from selected image
         x_x = np.linspace(0, len(self.img_color[0, :]), len(self.img_color[0, :]))
@@ -178,7 +181,7 @@ class PlotAnalyseCanvas(FigureCanvas):
 
             print("Fit was successful!")
 
-        except RuntimeError:
+        except:
             idx = len(self.init_x)
             popt_x, popt_y = np.zeros(idx), np.zeros(idx)
             popt_x[2], popt_y[2] = 1, 1
@@ -214,12 +217,21 @@ class PlotAnalyseCanvas(FigureCanvas):
             self.error_msg = "No image selected yet"
             print(self.error_msg)
             return self.error_msg
+
         elif type(self.last_img) is str:
             self.img_title = self.last_img
-            self.last_img = mpimg.imread(self.last_img)
-            print(type(self.last_img))
+
+            if self.last_img.endswith('.npz'):
+                temp = np.load(self.last_img)
+                self.last_img = temp.items()[0][1]
+
+            else:
+                self.last_img = mpimg.imread(self.last_img)
+
+
         elif type(self.last_img) is np.ndarray:
             pass
+
         else:
             self.error_msg = "Could not read image file: type(image) = {}".format(type(self.last_img))
             print(self.error_msg)
@@ -267,8 +279,8 @@ class PlotAnalyseCanvas(FigureCanvas):
         self.figure.colorbar(im, cax=ax_image_cb)
 
         # Second x and y axis in micrometer
-        scld_xticks = np.around(self.pxl2um * np.arange(min(self.data_x[0]), max(self.data_x[0]), 125), 2)
-        scld_yticks = np.around(self.pxl2um * np.arange(min(self.data_y[0]), max(self.data_y[0]), 125), 2)
+        scld_xticks = np.around(self.pxl2um * np.arange(min(self.data_x[0]), max(self.data_x[0]), 250), 2)
+        scld_yticks = np.around(self.pxl2um * np.arange(min(self.data_y[0]), max(self.data_y[0]), 250), 2)
 
         ax_image_x2 = ax_image.twiny()
         ax_image_x2.set_xticks(scld_xticks)
@@ -455,7 +467,7 @@ class FormWidget(QWidget):
 
         btn_plot_pic = QPushButton("Take picture and plot")
         btn_plot_pic.clicked.connect(self.take_picture)
-        self.shortcut_pic = QShortcut(QKeySequence("Ctrl+Shift+T"), self)
+        self.shortcut_pic = QShortcut(QKeySequence("Ctrl+T"), self)
         self.shortcut_pic.activated.connect(self.take_picture)
 
         self.cbb_plot_cctr = QComboBox()
@@ -512,7 +524,7 @@ class FormWidget(QWidget):
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
         my_img, _ = QFileDialog.getOpenFileName(self, "QFileDialog.getOpenFileName()", "",
-                                                "Images (*.png *.jpg *.tiff *.bmp);;All Files (*)", options=options)
+                                                "Images (*.png *.jpg *.tiff *.bmp *.npz);;All Files (*)", options=options)
         # Debug
         # my_img = "example_spot.bmp"
         if my_img:
@@ -521,15 +533,20 @@ class FormWidget(QWidget):
             self.exec_calc()
 
     def exec_calc(self):
+        # Plot and analyse
         self.m.img_to_data()
+
+        # Result handling
         rslt_str = "{}\n" \
                    "2*sigma_(x,rms) = ({:.2f} +/- {:.2f}) um\n" \
                    "2*sigma_(y,rms) = ({:.2f} +/- {:.2f}) um\n" \
             .format(self.m.now.strftime("%Y-%m-%d %H:%M:%S"), *self.m.last_rslt)
         self.txt_rslt.append(rslt_str)
         time.sleep(.5)
+
         # Adopt slider to image axis
         self.set_slider()
+
         # self.ln_edt_latest_rslt()
         self.write_to_table()
 
@@ -650,7 +667,6 @@ class FormWidget(QWidget):
         fwhm_x = '({:.2f} +/- {:.2f}) um'.format(*FWHMx)
         sigm_y = '({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[2:])
         fwhm_y = '({:.2f} +/- {:.2f}) um'.format(*FWHMy)
-        print("Results:")
         temp_zip = zip(self.tbl_indices, [sigm_x, fwhm_x, self.m.order_x, sigm_y, fwhm_y, self.m.order_y])
 
         for idx in temp_zip:
