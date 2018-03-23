@@ -470,10 +470,14 @@ class FormWidget(QWidget):
         lyt_cctr.addWidget(QLabel("Layer:"))
         lyt_cctr.addWidget(self.cbb_plot_cctr)
 
-        btn_close = QPushButton("Close")
-        btn_close.clicked.connect(qApp.quit)
         btn_reset_slider = QPushButton("Center Slider")
         btn_reset_slider.clicked.connect(self.reset_slider)
+
+        btn_save = QPushButton("Save last result")
+        btn_save.clicked.connect(self.save)
+
+        btn_close = QPushButton("Close")
+        btn_close.clicked.connect(qApp.quit)
 
         lyt_btn = QHBoxLayout()
         lyt_btn.addWidget(self.btn_live_view)
@@ -482,6 +486,7 @@ class FormWidget(QWidget):
         lyt_btn.addLayout(lyt_cctr)
         lyt_btn.addWidget(btn_reset_slider)
         lyt_btn.addWidget(btn_show_img)
+        lyt_btn.addWidget(btn_save)
         lyt_btn.addStretch(1)
         lyt_btn.addWidget(btn_close)
 
@@ -542,6 +547,34 @@ class FormWidget(QWidget):
             return
         self.m.reset_mean_val(self.m.last_img)
         self.exec_calc()
+
+    def save(self):
+        self.txt_info.append("Please choose a saving path...")
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontUseNativeDialog
+        my_path, _ = QFileDialog.getSaveFileName(self, "Save to", "last_img.npz",
+                                                 "Numpy (*.npz);;All Files (*)", options=options)
+
+        if not my_path:
+            self.txt_info.append("Saving aborted!")
+            return
+        if self.m.img_color is None:
+            self.txt_info.append("No data to be saved")
+            return
+
+        img = self.m.img_color
+        linex_x, linex_y = self.m.data_x
+        liney_x, liney_y = self.m.data_y
+        fitx_popt, fitx_pcov = self.m.data_x_rslt
+        fity_popt, fity_pcov = self.m.data_y_rslt
+
+        np.savez_compressed(my_path, img=img,
+                            linex_x=linex_x, linex_y=linex_y,
+                            liney_x=liney_x, liney_y=liney_y,
+                            fitx_popt=fitx_popt, fitx_pcov=fitx_pcov,
+                            fity_popt=fity_popt, fity_pcov=fity_pcov)
+
+        self.txt_info.append("Saving successful")
 
     def set_slider(self):
         self.sp_m_x.setMinimum(min(self.m.data_x[0]))
