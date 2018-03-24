@@ -124,11 +124,11 @@ class PlotAnalyseCanvas(FigureCanvas):
         # Define x and y values from selected image
         x_x = np.linspace(0, len(self.img_color[0, :]), len(self.img_color[0, :]))
         x_y = self.img_color[self.init_y['mu'], :] / sum(self.img_color[self.init_y['mu'], :])
-        self.data_x = [x_x, x_y]
+        self.data_x = np.array([x_x, x_y])
 
         y_x = np.linspace(0, len(self.img_color[:, 0]), len(self.img_color[:, 0]))
         y_y = self.img_color[:, self.init_x['mu']] / sum(self.img_color[:, self.init_x['mu']])
-        self.data_y = [y_x, y_y]
+        self.data_y = np.array([y_x, y_y])
 
         # Initial fit parameter: amplitude, mu, sigma, offset, order
         # Todo find better sigma initial value
@@ -140,41 +140,46 @@ class PlotAnalyseCanvas(FigureCanvas):
 
         self.print_init()
 
+        # Filter empty sensor data before fitting
+        self.temp_x = np.array([itm for itm in self.data_x.T if itm[1] != 0]).T
+        self.temp_y = np.array([itm for itm in self.data_y.T if itm[1] != 0]).T
+
         try:
+
+            # Residuals
             s_x, s_y = {}, {}
             # x line
             popt_x, pcov_x = curve_fit(lambda x, amp, mu, sig, off: self.func(x, amp, mu, sig, off, 1),
-                                       self.data_x[0], self.data_x[1],
+                                       *self.temp_x,
                                        p0=list(self.init_x.values()))
-            s_x[1] = sum((self.func(x_x, *popt_x) - x_y) ** 2)
-
-            for p in range(2, 11):
-                temp_popt_x, temp_pcov_x = curve_fit(lambda x, amp, mu, sig, off: self.func(x, amp, mu, sig, off, p),
-                                                     self.data_x[0], self.data_x[1],
+            s_x[1] = sum((self.func(self.temp_x[0], *popt_x) - self.temp_x[1]) ** 2)
+            for q in range(2, 11):
+                temp_popt_x, temp_pcov_x = curve_fit(lambda x, amp, mu, sig, off: self.func(x, amp, mu, sig, off, q),
+                                                     *self.temp_x,
                                                      p0=list(self.init_x.values()))
 
-                s_x[p] = sum((self.func(x_x, *popt_x) - x_y) ** 2)
+                s_x[q] = sum((self.func(self.temp_x[0], *popt_x) - self.temp_x[1]) ** 2)
 
-                if s_x[p] > s_x[p - 1]:
-                    self.order_x = p - 1
+                if s_x[q] > s_x[q - 1]:
+                    self.order_x = q - 1
                     break
 
                 else:
                     popt_x, pcov_x = temp_popt_x, temp_pcov_x
 
             # y line
-            popt_y, pcov_y = curve_fit(lambda y, amp, mu, sig, off: self.func(y, amp, mu, sig, off, p),
-                                       self.data_y[0], self.data_y[1],
+            popt_y, pcov_y = curve_fit(lambda y, amp, mu, sig, off: self.func(y, amp, mu, sig, off, 1),
+                                       *self.temp_y,
                                        p0=list(self.init_y.values()))
-            s_y[1] = sum((self.func(y_x, *popt_y) - y_y) ** 2)
+            s_y[1] = sum((self.func(self.temp_y[0], *popt_y) - self.temp_y[1]) ** 2)
             for p in range(2, 11):
                 temp_popt_y, temp_pcov_y = curve_fit(lambda y, amp, mu, sig, off: self.func(y, amp, mu, sig, off, p),
-                                                     self.data_y[0], self.data_y[1],
+                                                     *self.temp_y,
                                                      p0=list(self.init_y.values()))
 
-                s_y[p] = sum((self.func(y_x, *popt_y) - y_y) ** 2)
+                s_y[p] = sum((self.func(self.temp_y[0], *popt_y) - self.temp_y[1]) ** 2)
                 if s_y[p] > s_y[p - 1]:
-                    self.order_x = p - 1
+                    self.order_y = p - 1
                     break
                 else:
                     popt_y, pcov_y = temp_popt_y, temp_pcov_y
@@ -258,11 +263,11 @@ class PlotAnalyseCanvas(FigureCanvas):
         ax_image = self.figure.add_subplot(gs[:-1, 1:-1])
         ax_image_cb = self.figure.add_subplot(gs[:-1, -1])
         ax_y = self.figure.add_subplot(gs[:-1, 0], sharey=ax_image)
+        ax_x = self.figure.add_subplot(gs[-1, 1:-1], sharex=ax_image)
 
         # Image, horizontal and vertical lines
         ax_image.autoscale(False)
         im = ax_image.imshow(self.img_color, cmap='jet', aspect='auto')
-        ax_x = self.figure.add_subplot(gs[-1, 1:-1], sharex=ax_image)
 
         ax_image.axhline(self.init_y['mu'], color='w')
         ax_image.axvline(self.init_x['mu'], color='w')
@@ -294,13 +299,15 @@ class PlotAnalyseCanvas(FigureCanvas):
         # Data and fits
         ax_y.autoscale(axis='y', enable=False)
         ax_y.grid(color='b', alpha=0.5, linestyle='dashed', linewidth=0.5)
-        ax_y.plot(self.data_y[1], self.data_y[0])
-        ax_y.plot(self.func(self.data_y[0], *self.data_y_rslt[0]), self.data_y[0])
+        ax_y.plot(self.data_y[1], self.data_y[0], 'o', markersize=1, label="raw data")
+        ax_y.plot(self.temp_y[1], self.temp_y[0], 'o', markersize=1, label="fitted data")
+        ax_y.plot(self.func(self.data_y[0], *self.data_y_rslt[0]), self.data_y[0], label="fit")
 
         ax_x.autoscale(axis='x', enable=False)
         ax_x.grid(color='b', alpha=0.5, linestyle='dashed', linewidth=0.5)
-        ax_x.plot(self.data_x[0], self.data_x[1])
-        ax_x.plot(self.data_x[0], self.func(self.data_x[0], *self.data_x_rslt[0]))
+        ax_x.plot(self.data_x[0], self.data_x[1], 'o', markersize=1, label="raw data")
+        ax_x.plot(self.temp_x[0], self.temp_x[1], 'o', markersize=1, label="fitted data")
+        ax_x.plot(self.data_x[0], self.func(self.data_x[0], *self.data_x_rslt[0]), label="fit")
 
         self.draw()
 
@@ -524,9 +531,10 @@ class FormWidget(QWidget):
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
         my_img, _ = QFileDialog.getOpenFileName(self, "QFileDialog.getOpenFileName()", "",
-                                                "Images (*.png *.jpg *.tiff *.bmp *.npz);;All Files (*)", options=options)
+                                                "Images (*.png *.jpg *.tiff *.bmp *.npz);;All Files (*)",
+                                                options=options)
         # Debug
-        # my_img = "example_spot.bmp"
+        # my_img = "last_img.npz"
         if my_img:
             self.txt_info.append('{} chosen'.format(my_img))
             self.m.last_img = my_img
@@ -657,7 +665,6 @@ class FormWidget(QWidget):
             self.exec_calc()
 
     def write_to_table(self):
-        print("\n\nwrite_to_table")
         if self.m.last_rslt is None:
             self.txt_info.append("No results yet")
             return None
