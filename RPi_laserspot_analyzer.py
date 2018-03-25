@@ -200,9 +200,10 @@ class PlotAnalyseCanvas(FigureCanvas):
 
         self.now = datetime.datetime.now()
 
+        # 2*sigma +/- 2*sqrt(cov_sigma)
         self.last_rslt = [2 * x * self.pxl2um for x in
-                          [2 * self.data_x_rslt[0][2], 2 * np.sqrt(self.data_x_rslt[1][2, 2]),
-                           2 * self.data_y_rslt[0][2], 2 * np.sqrt(self.data_y_rslt[1][2, 2])]]
+                          [self.data_x_rslt[0][2], np.sqrt(self.data_x_rslt[1][2, 2]),
+                           self.data_y_rslt[0][2], np.sqrt(self.data_y_rslt[1][2, 2])]]
         print("self.last_rslt = {}".format(self.last_rslt))
         print("Finished Calculating! Results:\n")
         self.print_init()
@@ -276,7 +277,7 @@ class PlotAnalyseCanvas(FigureCanvas):
         ax_image.set_ylim(max(self.data_y[0]), 0)
         ax_image.set_xlabel('x in pixel')
         ax_image.set_ylabel('y in pixel')
-        ax_image.set_title(self.img_title, y=1.12)
+        ax_image.set_title(self.img_title, y=1.125)
         ax_image.grid(color='w', alpha=0.5, linestyle='dashed', linewidth=0.5)
 
         # Colorbar
@@ -299,15 +300,20 @@ class PlotAnalyseCanvas(FigureCanvas):
         # Data and fits
         ax_y.autoscale(axis='y', enable=False)
         ax_y.grid(color='b', alpha=0.5, linestyle='dashed', linewidth=0.5)
-        ax_y.plot(self.data_y[1], self.data_y[0], 'o', markersize=1, label="raw data")
-        ax_y.plot(self.temp_y[1], self.temp_y[0], 'o', markersize=1, label="fitted data")
-        ax_y.plot(self.func(self.data_y[0], *self.data_y_rslt[0]), self.data_y[0], label="fit")
+        ax_y.plot(self.data_y[1]*100, self.data_y[0], 'o', markersize=1, label="raw data")
+        ax_y.plot(self.temp_y[1]*100, self.temp_y[0], 'o', markersize=1, label="fitted data")
+        ax_y.plot(self.func(self.data_y[0], *self.data_y_rslt[0])*100, self.data_y[0], color='purple', label="fit")
 
         ax_x.autoscale(axis='x', enable=False)
         ax_x.grid(color='b', alpha=0.5, linestyle='dashed', linewidth=0.5)
-        ax_x.plot(self.data_x[0], self.data_x[1], 'o', markersize=1, label="raw data")
-        ax_x.plot(self.temp_x[0], self.temp_x[1], 'o', markersize=1, label="fitted data")
-        ax_x.plot(self.data_x[0], self.func(self.data_x[0], *self.data_x_rslt[0]), label="fit")
+        ax_x.plot(self.data_x[0], self.data_x[1]*100, 'o', markersize=1, label="raw data")
+        ax_x.plot(self.temp_x[0], self.temp_x[1]*100, 'o', markersize=1, label="fitted data")
+        ax_x.plot(self.data_x[0], self.func(self.data_x[0], *self.data_x_rslt[0])*100, color='purple', label="fit")
+        # Debug
+        # ax_x.plot(self.data_x[0], self.func(self.data_x[0], *[0.0014, 1380, 300, 3e-4, 3]) * 100, label="fit")
+
+        ax_y.set_xlabel('I / \u03a3 I [%]', fontsize=14)
+        ax_x.set_ylabel('I / \u03a3 I [%]', fontsize=14)
 
         self.draw()
 
@@ -395,7 +401,7 @@ class FormWidget(QWidget):
         self.sig.my_event.connect(self.close)
 
         # FigureCanvas
-        self.m = PlotAnalyseCanvas(None, 2 * parent.my_width, 2 * parent.my_height)
+        self.m = PlotAnalyseCanvas(None, 2 * parent.my_width, 2.5 * parent.my_height)
         self.m_toolbar = NavigationToolbar(self.m, self)
 
         # Slider to change Plot
@@ -427,7 +433,7 @@ class FormWidget(QWidget):
         self.tbl.setObjectName("table_view")
         self.tbl.setRowCount(2)
         self.tbl.setColumnCount(3)
-        self.tbl.setMinimumHeight(100)
+        self.tbl.setMinimumHeight(75)
         tbl_col = ["2\u00b7\u03c3_rms", "FWHM", "Gaussian order"]
         tbl_row = ["x", "y"]
         self.tbl_indices = [[i, j] for i in range(self.tbl.rowCount()) for j in range(self.tbl.columnCount())]
@@ -446,19 +452,17 @@ class FormWidget(QWidget):
         lyt_nav.addWidget(self.tbl)
 
         # Info and result box
-        lbl_info = QLabel("Info")
         self.txt_info = QTextEdit()
         self.txt_info.setReadOnly(True)
-        lbl_rslt = QLabel("Result log:")
         self.txt_rslt = QTextEdit()
         self.txt_rslt.setReadOnly(True)
-        self.txt_rslt.setMinimumHeight(100)
+        self.txt_rslt.setMinimumHeight(50)
 
         lyt_txt = QGridLayout()
-        lyt_txt.setSpacing(10)
-        lyt_txt.addWidget(lbl_info, 0, 0)
+        lyt_txt.setSpacing(5)
+        lyt_txt.addWidget(QLabel("Info"), 0, 0)
         lyt_txt.addWidget(self.txt_info, 1, 0)
-        lyt_txt.addWidget(lbl_rslt, 0, 1)
+        lyt_txt.addWidget(QLabel("Result log:") , 0, 1)
         lyt_txt.addWidget(self.txt_rslt, 1, 1)
 
         # Buttons
