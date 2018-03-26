@@ -622,8 +622,8 @@ class FormWidget(QWidget):
         if not picamfound:
             self.txt_info.append("Live view not available: No picamera module loaded")
             return
-        # self.btn_live_view.setChecked(True)
-        # self.btn_live_view.setText("Stop Live View\n(Ctrl + K)")
+        self.btn_live_view.setChecked(True)
+        self.btn_live_view.setText("Stop Live View\n(Ctrl + K)")
         self.camera.my_start_preview()
 
     def stop_live_view_shortcut(self):
