@@ -366,7 +366,8 @@ class MyMainWindow(QMainWindow):
         exitAct.setStatusTip('Exit application')
         exitAct.triggered.connect(qApp.quit)
         menubar = self.menuBar()
-        filemenu = menubar.addMenu('&File')
+        filemenu = menubar.addMenu('&Menu')
+        picmenu = menubar.addMenu('&Pic')
         filemenu.addAction(exitAct)
 
         self.setGeometry(self.my_left, self.my_top, self.my_width, self.my_height)
@@ -466,7 +467,7 @@ class FormWidget(QWidget):
         lyt_txt.addWidget(self.txt_rslt, 1, 1)
 
         # Buttons
-        self.btn_live_view = QPushButton("Start Live View")
+        self.btn_live_view = QPushButton("Start Live View\n(Ctrl + L)")
         self.btn_live_view.setCheckable(True)
         self.btn_live_view.setChecked(False)
         self.btn_live_view.clicked.connect(lambda: self.start_live_view(self.btn_live_view))
@@ -476,7 +477,7 @@ class FormWidget(QWidget):
         btn_plot_file = QPushButton("Plot from File")
         btn_plot_file.clicked.connect(self.choose_file)
 
-        btn_plot_pic = QPushButton("Take picture and plot")
+        btn_plot_pic = QPushButton("Take picture and plot\n(Ctrl + T)")
         btn_plot_pic.clicked.connect(self.take_picture)
         self.shortcut_pic = QShortcut(QKeySequence("Ctrl+T"), self)
         self.shortcut_pic.activated.connect(self.take_picture)
