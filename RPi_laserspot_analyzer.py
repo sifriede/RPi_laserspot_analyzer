@@ -471,8 +471,11 @@ class FormWidget(QWidget):
         self.btn_live_view.setCheckable(True)
         self.btn_live_view.setChecked(False)
         self.btn_live_view.clicked.connect(lambda: self.start_live_view(self.btn_live_view))
+
         self.shortcut_live = QShortcut(QKeySequence("Ctrl+L"), self)
-        self.shortcut_live.activated.connect(lambda: self.start_live_view(self.btn_live_view))
+        self.shortcut_live.activated.connect(self.start_live_view_shortcut)
+        self.shortcut_live_stop = QShortcut(QKeySequence("Ctrl+K"), self)
+        self.shortcut_live_stop.activated.connect(self.stop_live_view_shortcut)
 
         btn_plot_file = QPushButton("Plot from File")
         btn_plot_file.clicked.connect(self.choose_file)
@@ -615,6 +618,22 @@ class FormWidget(QWidget):
         self.sp_m_y.setMaximum(max(self.m.data_y[0]))
         self.sp_m_y.setValue(self.m.init_y['mu'])
 
+    def start_live_view_shortcut(self):
+        if not picamfound:
+            self.txt_info.append("Live view not available: No picamera module loaded")
+            return
+        # self.btn_live_view.setChecked(True)
+        # self.btn_live_view.setText("Stop Live View\n(Ctrl + K)")
+        self.camera.my_start_preview()
+
+    def stop_live_view_shortcut(self):
+        if not picamfound:
+            self.txt_info.append("Live view not available: No picamera module loaded")
+            return
+        self.btn_live_view.setChecked(False)
+        self.btn_live_view.setText("Start Live View\n(Ctrl + L)")
+        self.camera.stop_preview()
+
     def start_live_view(self, btn):
         if not picamfound:
             self.txt_info.append("Live view not available: No picamera module loaded")
@@ -623,13 +642,13 @@ class FormWidget(QWidget):
         if btn.isChecked():
             self.txt_info.append("Live view started")
             self.txt_info.append("Camera resolution: {}x{}".format(*self.camera.resolution))
-            self.btn_live_view.setText("Stop Live View")
+            self.btn_live_view.setText("Stop Live View\n(Ctrl + K)")
             self.camera.my_start_preview()
 
         else:
             self.txt_info.append("Live view stopped")
             self.camera.stop_preview()
-            self.btn_live_view.setText("Start Live View")
+            self.btn_live_view.setText("Start Live View\n(Ctrl + L)")
 
     def show_img(self):
         if self.raw_bayer_data is None:
@@ -654,7 +673,7 @@ class FormWidget(QWidget):
 
         self.camera.stop_preview()
         self.btn_live_view.setChecked(False)
-        self.btn_live_view.setText("Start Live View")
+        self.btn_live_view.setText("Start Live View\n(Ctrl + L)")
         self.txt_info.append("Picture taken!")
         self.m.img_title = "Last Taken Picture (raw)"
         self.m.last_img = self.raw_bayer_data.array
