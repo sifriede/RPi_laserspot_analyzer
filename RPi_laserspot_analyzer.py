@@ -4,27 +4,29 @@ import matplotlib.gridspec as gridspec
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import numpy as np
-from importlib import util
 
-import datetime, time
-import os, sys
+import datetime
+import time
+import sys
 
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib import ticker
 from scipy.optimize import curve_fit
 
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 
-# Use picamera only if available
-picamfound = util.find_spec("picamera") is not None
-if picamfound:
+# Import picamera if available
+try:
     import picamera
     from picamera.array import PiBayerArray
-else:
+
+except ImportError:
     print("No picamera module found, camera not available!")
+    picamfound = False
 
 version = 1.4
 
@@ -59,8 +61,8 @@ if picamfound:
 
 class PlotAnalyseCanvas(FigureCanvas):
 
-    def __init__(self, pxl2um=None, width=5, height=4, dpi=100, parent=None):
-
+    def __init__(self, parent=None, pxl2um=None, width=5, height=4, dpi=100):
+        # super(PlotAnalyseCanvas, self).__init__(parent)
         if pxl2um is None:
             self.pxl2um = MyMainWindow.pxl2um
         else:
@@ -74,6 +76,8 @@ class PlotAnalyseCanvas(FigureCanvas):
         self.data_x, self.data_y = None, None  # Img data on chosen x and y line
         self.last_rslt = None  # Only sig +/- error
         self.data_x_rslt, self.data_y_rslt = None, None  # Complete fit results
+
+        self.temp_x, self.temp_y = None, None  # Temporary array to fit only sensor values > 0
 
         # Choose image color channel: 0 = red, 1 = green, b = blue
         self.color = 1
@@ -145,7 +149,6 @@ class PlotAnalyseCanvas(FigureCanvas):
         self.temp_y = np.array([itm for itm in self.data_y.T if itm[1] != 0]).T
 
         try:
-
             # Residuals
             s_x, s_y = {}, {}
             # x line
@@ -234,7 +237,6 @@ class PlotAnalyseCanvas(FigureCanvas):
             else:
                 self.last_img = mpimg.imread(self.last_img)
 
-
         elif type(self.last_img) is np.ndarray:
             pass
 
@@ -242,6 +244,7 @@ class PlotAnalyseCanvas(FigureCanvas):
             self.error_msg = "Could not read image file: type(image) = {}".format(type(self.last_img))
             print(self.error_msg)
             return self.error_msg
+
         self.calc_data()
 
     def print_init(self):
@@ -282,7 +285,7 @@ class PlotAnalyseCanvas(FigureCanvas):
 
         # Colorbar
         ax_image_cb.set_label('Intensity')
-        self.figure.colorbar(im, cax=ax_image_cb)
+        cb = self.figure.colorbar(im, cax=ax_image_cb, label='Intensity')
 
         # Second x and y axis in micrometer
         scld_xticks = np.around(self.pxl2um * np.arange(min(self.data_x[0]), max(self.data_x[0]), 250), 2)
@@ -300,15 +303,15 @@ class PlotAnalyseCanvas(FigureCanvas):
         # Data and fits
         ax_y.autoscale(axis='y', enable=False)
         ax_y.grid(color='b', alpha=0.5, linestyle='dashed', linewidth=0.5)
-        ax_y.plot(self.data_y[1]*100, self.data_y[0], 'o', markersize=1, label="raw data")
-        ax_y.plot(self.temp_y[1]*100, self.temp_y[0], 'o', markersize=1, label="fitted data")
-        ax_y.plot(self.func(self.data_y[0], *self.data_y_rslt[0])*100, self.data_y[0], color='purple', label="fit")
+        ax_y.plot(self.data_y[1] * 100, self.data_y[0], 'o', markersize=1, label="raw data")
+        ax_y.plot(self.temp_y[1] * 100, self.temp_y[0], 'o', markersize=1, label="fitted data")
+        ax_y.plot(self.func(self.data_y[0], *self.data_y_rslt[0]) * 100, self.data_y[0], color='purple', label="fit")
 
         ax_x.autoscale(axis='x', enable=False)
         ax_x.grid(color='b', alpha=0.5, linestyle='dashed', linewidth=0.5)
-        ax_x.plot(self.data_x[0], self.data_x[1]*100, 'o', markersize=1, label="raw data")
-        ax_x.plot(self.temp_x[0], self.temp_x[1]*100, 'o', markersize=1, label="fitted data")
-        ax_x.plot(self.data_x[0], self.func(self.data_x[0], *self.data_x_rslt[0])*100, color='purple', label="fit")
+        ax_x.plot(self.data_x[0], self.data_x[1] * 100, 'o', markersize=1, label="raw data")
+        ax_x.plot(self.temp_x[0], self.temp_x[1] * 100, 'o', markersize=1, label="fitted data")
+        ax_x.plot(self.data_x[0], self.func(self.data_x[0], *self.data_x_rslt[0]) * 100, color='purple', label="fit")
         # Debug
         # ax_x.plot(self.data_x[0], self.func(self.data_x[0], *[0.0014, 1380, 300, 3e-4, 3]) * 100, label="fit")
 
@@ -361,6 +364,8 @@ class MyMainWindow(QMainWindow):
         self.setCentralWidget(self.form_widget)
 
         # Menu bar
+        # ToDo add "start live view" and "stop live view" in menubar
+        # ToDo use pyqtSignal to send messages to statusbar or Info box
         exitAct = QAction('&Exit', self)
         exitAct.setShortcut('Ctrl+Q')
         exitAct.setStatusTip('Exit application')
@@ -382,7 +387,7 @@ class MyMainWindow(QMainWindow):
 class FormWidget(QWidget):
 
     def __init__(self, parent):
-        super(FormWidget, self).__init__(parent)
+        super().__init__()
         # Initial Parameters
         self.raw_bayer_data = None
 
@@ -395,21 +400,42 @@ class FormWidget(QWidget):
         if picamfound:
             self.camera = MyCamera(*preview)
 
+        # UI Elements
+        self.m = PlotAnalyseCanvas(self, None, 2 * parent.my_width, 2.5 * parent.my_height)
+        self.m_toolbar = NavigationToolbar(self.m, self)
+        self.sp_m_x = QSlider(Qt.Horizontal)
+        self.sp_m_y = QSlider(Qt.Vertical)
+
+        # Buttons
+        self.btn_live_view = QPushButton("Start Live View\n(Ctrl + L)")
+        self.btn_plot_file = QPushButton("Plot from File")
+        self.btn_plot_pic = QPushButton("Take picture and plot\n(Ctrl + T)")
+
+        # Combo Boxes
+        self.cbb_plot_cctr = QComboBox()
+
+        # Tables
+        self.tbl = QTableWidget()
+        self.tbl_indices = None
+
+        # TextEdits
+        self.txt_info = QTextEdit()
+        self.txt_rslt = QTextEdit()
+
+        # Shortcuts
+        self.shortcut_live = QShortcut(QKeySequence("Ctrl+L"), self)
+        self.shortcut_live_stop = QShortcut(QKeySequence("Ctrl+K"), self)
+        self.shortcut_pic = QShortcut(QKeySequence("Ctrl+T"), self)
+
         # Initialize UI
         self.init_ui(parent)
 
     def init_ui(self, parent):
         self.sig.my_event.connect(self.close)
 
-        # FigureCanvas
-        self.m = PlotAnalyseCanvas(None, 2 * parent.my_width, 2.5 * parent.my_height)
-        self.m_toolbar = NavigationToolbar(self.m, self)
-
-        # Slider to change Plot
-        self.sp_m_x = QSlider(Qt.Horizontal)
         self.sp_m_x.setTickPosition(QSlider.TicksBelow)
         self.sp_m_x.sliderReleased.connect(self.change_mean_val)
-        self.sp_m_y = QSlider(Qt.Vertical)
+
         self.sp_m_y.setTickPosition(QSlider.TicksRight)
         self.sp_m_y.sliderReleased.connect(self.change_mean_val)
         self.sp_m_y.setInvertedAppearance(True)
@@ -419,18 +445,6 @@ class FormWidget(QWidget):
         lyt_plt.addWidget(self.sp_m_x, 0, 0)
         lyt_plt.addWidget(self.sp_m_y, 1, 1)
 
-        # Navigation bar and latest results
-        self.ln_edt_x = QLineEdit()
-        self.ln_edt_x.setText("No results yet")
-        self.ln_edt_wx = QLineEdit()
-        self.ln_edt_wx.setText("No results yet")
-        self.ln_edt_y = QLineEdit()
-        self.ln_edt_y.setText("No results yet")
-        self.ln_edt_wy = QLineEdit()
-        self.ln_edt_wy.setText("No results yet")
-
-        # Tables
-        self.tbl = QTableWidget()
         self.tbl.setObjectName("table_view")
         self.tbl.setRowCount(2)
         self.tbl.setColumnCount(3)
@@ -449,43 +463,35 @@ class FormWidget(QWidget):
 
         lyt_nav = QHBoxLayout()
         lyt_nav.addWidget(self.m_toolbar)
-        # lyt_nav.addLayout(lyt_rslt)
         lyt_nav.addWidget(self.tbl)
 
-        # Info and result box
-        self.txt_info = QTextEdit()
         self.txt_info.setReadOnly(True)
-        self.txt_rslt = QTextEdit()
         self.txt_rslt.setReadOnly(True)
         self.txt_rslt.setMinimumHeight(50)
 
+
+
+
+
         lyt_txt = QGridLayout()
+
         lyt_txt.setSpacing(5)
         lyt_txt.addWidget(QLabel("Info"), 0, 0)
         lyt_txt.addWidget(self.txt_info, 1, 0)
-        lyt_txt.addWidget(QLabel("Result log:") , 0, 1)
+        lyt_txt.addWidget(QLabel("Result log:"), 0, 1)
         lyt_txt.addWidget(self.txt_rslt, 1, 1)
 
-        # Buttons
-        self.btn_live_view = QPushButton("Start Live View\n(Ctrl + L)")
         self.btn_live_view.setCheckable(True)
         self.btn_live_view.setChecked(False)
         self.btn_live_view.clicked.connect(lambda: self.start_live_view(self.btn_live_view))
 
-        self.shortcut_live = QShortcut(QKeySequence("Ctrl+L"), self)
         self.shortcut_live.activated.connect(self.start_live_view_shortcut)
-        self.shortcut_live_stop = QShortcut(QKeySequence("Ctrl+K"), self)
         self.shortcut_live_stop.activated.connect(self.stop_live_view_shortcut)
-
-        btn_plot_file = QPushButton("Plot from File")
-        btn_plot_file.clicked.connect(self.choose_file)
-
-        btn_plot_pic = QPushButton("Take picture and plot\n(Ctrl + T)")
-        btn_plot_pic.clicked.connect(self.take_picture)
-        self.shortcut_pic = QShortcut(QKeySequence("Ctrl+T"), self)
         self.shortcut_pic.activated.connect(self.take_picture)
 
-        self.cbb_plot_cctr = QComboBox()
+        self.btn_plot_file.clicked.connect(self.choose_file)
+        self.btn_plot_pic.clicked.connect(self.take_picture)
+
         self.cbb_plot_cctr.addItems(["red", "green", "blue"])
         self.cbb_plot_cctr.setCurrentIndex(self.m.color)
         self.cbb_plot_cctr.currentIndexChanged.connect(self.change_color)
@@ -508,8 +514,8 @@ class FormWidget(QWidget):
 
         lyt_btn = QHBoxLayout()
         lyt_btn.addWidget(self.btn_live_view)
-        lyt_btn.addWidget(btn_plot_file)
-        lyt_btn.addWidget(btn_plot_pic)
+        lyt_btn.addWidget(self.btn_plot_file)
+        lyt_btn.addWidget(self.btn_plot_pic)
         lyt_btn.addLayout(lyt_cctr)
         lyt_btn.addWidget(btn_reset_slider)
         lyt_btn.addWidget(btn_show_img)
