@@ -28,13 +28,19 @@ except ImportError:
     print("No picamera module found, camera not available!")
     picamfound = False
 
-version = 1.4
+version = 1.5
 
 
+#############################
+# Test event
+#############################
 class MyEvent(QObject):
     my_event = pyqtSignal()
 
 
+#############################
+# MyCamera
+#############################
 if picamfound:
     class MyCamera(picamera.PiCamera):
         def __init__(self, left=100, top=100, width=1024, height=768):
@@ -59,6 +65,9 @@ if picamfound:
             )
 
 
+#############################
+# FigureCanvas
+#############################
 class PlotAnalyseCanvas(FigureCanvas):
 
     def __init__(self, parent=None, pxl2um=None, width=5, height=4, dpi=100):
@@ -137,10 +146,67 @@ class PlotAnalyseCanvas(FigureCanvas):
         # Initial fit parameter: amplitude, mu, sigma, offset, order
         # Todo find better sigma initial value
         # ToDo create Dialog to change these parameters
+
+        ####################################################################################################
+        # Gaussian order only integer
+        # if None in self.init_x.values():
+        #     self.init_x = dict(amp=max(x_y), mu=self.init_x['mu'], sig=200, off=min(x_y))
+        # if None in self.init_y.values():
+        #     self.init_y = dict(amp=max(x_y), mu=self.init_y['mu'], sig=200, off=min(y_y))
+        #
+        # self.print_init()
+        #
+        # # Filter empty sensor data before fitting
+        # self.temp_x = np.array([itm for itm in self.data_x.T if itm[1] != 0]).T
+        # self.temp_y = np.array([itm for itm in self.data_y.T if itm[1] != 0]).T
+        #
+        # try:
+        #     # Residuals
+        #     s_x, s_y = {}, {}
+        #     # x line
+        #     popt_x, pcov_x = curve_fit(lambda x, amp, mu, sig, off: self.func(x, amp, mu, sig, off, 1),
+        #                                *self.temp_x,
+        #                                p0=list(self.init_x.values()))
+        #     s_x[1] = sum((self.func(self.temp_x[0], *popt_x) - self.temp_x[1]) ** 2)
+        #     for q in range(2, 11):
+        #         temp_popt_x, temp_pcov_x = curve_fit(lambda x, amp, mu, sig, off: self.func(x, amp, mu, sig, off, q),
+        #                                              *self.temp_x,
+        #                                              p0=list(self.init_x.values()))
+        #
+        #         s_x[q] = sum((self.func(self.temp_x[0], *popt_x) - self.temp_x[1]) ** 2)
+        #
+        #         if s_x[q] > s_x[q - 1]:
+        #             self.order_x = q - 1
+        #             break
+        #
+        #         else:
+        #             popt_x, pcov_x = temp_popt_x, temp_pcov_x
+        #
+        #     # y line
+        #     popt_y, pcov_y = curve_fit(lambda y, amp, mu, sig, off: self.func(y, amp, mu, sig, off, 1),
+        #                                *self.temp_y,
+        #                                p0=list(self.init_y.values()))
+        #     s_y[1] = sum((self.func(self.temp_y[0], *popt_y) - self.temp_y[1]) ** 2)
+        #     for p in range(2, 11):
+        #         temp_popt_y, temp_pcov_y = curve_fit(lambda y, amp, mu, sig, off: self.func(y, amp, mu, sig, off, p),
+        #                                              *self.temp_y,
+        #                                              p0=list(self.init_y.values()))
+        #
+        #         s_y[p] = sum((self.func(self.temp_y[0], *popt_y) - self.temp_y[1]) ** 2)
+        #         if s_y[p] > s_y[p - 1]:
+        #             self.order_y = p - 1
+        #             break
+        #         else:
+        #             popt_y, pcov_y = temp_popt_y, temp_pcov_y
+        #
+        #     print("Fit was successful!")
+
+        ####################################################################################################
+        # Gaussian order may be arbitrary
         if None in self.init_x.values():
-            self.init_x = dict(amp=max(x_y), mu=self.init_x['mu'], sig=200, off=min(x_y))
+            self.init_x = dict(amp=max(x_y), mu=self.init_x['mu'], sig=200, off=min(x_y), p=self.order_x)
         if None in self.init_y.values():
-            self.init_y = dict(amp=max(x_y), mu=self.init_y['mu'], sig=200, off=min(y_y))
+            self.init_y = dict(amp=max(x_y), mu=self.init_y['mu'], sig=200, off=min(y_y), p=self.order_y)
 
         self.print_init()
 
@@ -152,40 +218,10 @@ class PlotAnalyseCanvas(FigureCanvas):
             # Residuals
             s_x, s_y = {}, {}
             # x line
-            popt_x, pcov_x = curve_fit(lambda x, amp, mu, sig, off: self.func(x, amp, mu, sig, off, 1),
-                                       *self.temp_x,
-                                       p0=list(self.init_x.values()))
-            s_x[1] = sum((self.func(self.temp_x[0], *popt_x) - self.temp_x[1]) ** 2)
-            for q in range(2, 11):
-                temp_popt_x, temp_pcov_x = curve_fit(lambda x, amp, mu, sig, off: self.func(x, amp, mu, sig, off, q),
-                                                     *self.temp_x,
-                                                     p0=list(self.init_x.values()))
-
-                s_x[q] = sum((self.func(self.temp_x[0], *popt_x) - self.temp_x[1]) ** 2)
-
-                if s_x[q] > s_x[q - 1]:
-                    self.order_x = q - 1
-                    break
-
-                else:
-                    popt_x, pcov_x = temp_popt_x, temp_pcov_x
+            popt_x, pcov_x = curve_fit(self.func, *self.temp_x, p0=list(self.init_x.values()))
 
             # y line
-            popt_y, pcov_y = curve_fit(lambda y, amp, mu, sig, off: self.func(y, amp, mu, sig, off, 1),
-                                       *self.temp_y,
-                                       p0=list(self.init_y.values()))
-            s_y[1] = sum((self.func(self.temp_y[0], *popt_y) - self.temp_y[1]) ** 2)
-            for p in range(2, 11):
-                temp_popt_y, temp_pcov_y = curve_fit(lambda y, amp, mu, sig, off: self.func(y, amp, mu, sig, off, p),
-                                                     *self.temp_y,
-                                                     p0=list(self.init_y.values()))
-
-                s_y[p] = sum((self.func(self.temp_y[0], *popt_y) - self.temp_y[1]) ** 2)
-                if s_y[p] > s_y[p - 1]:
-                    self.order_y = p - 1
-                    break
-                else:
-                    popt_y, pcov_y = temp_popt_y, temp_pcov_y
+            popt_y, pcov_y = curve_fit(self.func, *self.temp_y, p0=list(self.init_y.values()))
 
             print("Fit was successful!")
 
@@ -197,9 +233,9 @@ class PlotAnalyseCanvas(FigureCanvas):
             print("Fit failed!")
 
         self.data_x_rslt = [popt_x, pcov_x]
-        np.append(self.data_x_rslt[0], self.order_x)
+        # np.append(self.data_x_rslt[0], self.order_x)
         self.data_y_rslt = [popt_y, pcov_y]
-        np.append(self.data_y_rslt[0], self.order_y)
+        # np.append(self.data_y_rslt[0], self.order_y)
 
         self.now = datetime.datetime.now()
 
@@ -469,10 +505,6 @@ class FormWidget(QWidget):
         self.txt_rslt.setReadOnly(True)
         self.txt_rslt.setMinimumHeight(50)
 
-
-
-
-
         lyt_txt = QGridLayout()
 
         lyt_txt.setSpacing(5)
@@ -481,6 +513,7 @@ class FormWidget(QWidget):
         lyt_txt.addWidget(QLabel("Result log:"), 0, 1)
         lyt_txt.addWidget(self.txt_rslt, 1, 1)
 
+        # Buttons
         self.btn_live_view.setCheckable(True)
         self.btn_live_view.setChecked(False)
         self.btn_live_view.clicked.connect(lambda: self.start_live_view(self.btn_live_view))
@@ -509,6 +542,10 @@ class FormWidget(QWidget):
         btn_save = QPushButton("Save last result")
         btn_save.clicked.connect(self.save)
 
+        btn_fitparam = QPushButton("Change fit\nstart parameter")
+        btn_fitparam.clicked.connect(self.change_fitparameter)
+
+
         btn_close = QPushButton("Close")
         btn_close.clicked.connect(qApp.quit)
 
@@ -520,6 +557,7 @@ class FormWidget(QWidget):
         lyt_btn.addWidget(btn_reset_slider)
         lyt_btn.addWidget(btn_show_img)
         lyt_btn.addWidget(btn_save)
+        lyt_btn.addWidget(btn_fitparam)
         lyt_btn.addStretch(1)
         lyt_btn.addWidget(btn_close)
 
@@ -539,6 +577,9 @@ class FormWidget(QWidget):
         self.txt_info.append("Color {} selected".format(self.cbb_plot_cctr.currentText()))
         self.m.change_color_channel(self.cbb_plot_cctr.currentIndex())
         self.exec_calc()
+
+    def change_fitparameter(self):
+        return
 
     def choose_file(self):
         self.txt_info.append("Please choose a picture...")
@@ -572,9 +613,13 @@ class FormWidget(QWidget):
         # self.ln_edt_latest_rslt()
         self.write_to_table()
 
+    @staticmethod
+    def FWHM(sigma, order=1):
+        return np.sqrt(2) * np.log(2) ** (1 / order) * sigma
+
     def ln_edt_latest_rslt(self):
-        FWHMx = [np.sqrt(2) * np.log(2) ** (1 / self.m.order_x) * x for x in self.m.last_rslt[:2]]
-        FWHMy = [np.sqrt(2) * np.log(2) ** (1 / self.m.order_y) * y for y in self.m.last_rslt[2:]]
+        FWHMx = [self.FWHM(x, self.m.data_x_rslt[0][-1]) for x in self.m.last_rslt[:2]]
+        FWHMy = [self.FWHM(y, self.m.data_y_rslt[0][-1]) for y in self.m.last_rslt[2:]]
         self.ln_edt_x.setText('({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[:2]))
         self.ln_edt_wx.setText('({:.2f} +/- {:.2f}) um'.format(*FWHMx))
         self.ln_edt_y.setText('({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[2:]))
@@ -698,13 +743,18 @@ class FormWidget(QWidget):
         if self.m.last_rslt is None:
             self.txt_info.append("No results yet")
             return None
-        FWHMx = [np.sqrt(2) * np.log(2) ** (1 / self.m.order_x) * x for x in self.m.last_rslt[:2]]
-        FWHMy = [np.sqrt(2) * np.log(2) ** (1 / self.m.order_y) * y for y in self.m.last_rslt[2:]]
+        FWHMx = [self.FWHM(x, self.m.data_x_rslt[0][-1]) for x in self.m.last_rslt[:2]]
+        FWHMy = [self.FWHM(y, self.m.data_y_rslt[0][-1]) for y in self.m.last_rslt[2:]]
         sigm_x = '({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[:2])
         fwhm_x = '({:.2f} +/- {:.2f}) um'.format(*FWHMx)
         sigm_y = '({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[2:])
         fwhm_y = '({:.2f} +/- {:.2f}) um'.format(*FWHMy)
-        temp_zip = zip(self.tbl_indices, [sigm_x, fwhm_x, self.m.order_x, sigm_y, fwhm_y, self.m.order_y])
+        # temp_zip = zip(self.tbl_indices, [sigm_x, fwhm_x, self.m.order_x, sigm_y, fwhm_y, self.m.order_y])
+        temp_zip = zip(self.tbl_indices,
+                       [sigm_x, fwhm_x,
+                        "({:.3f} +/- {:.3f})".format(self.m.data_x_rslt[0][-1], self.m.data_x_rslt[1][-1, -1]),
+                        sigm_y, fwhm_y,
+                        "({:.3f} +/- {:.3f})".format(self.m.data_y_rslt[0][-1], self.m.data_y_rslt[1][-1, -1])])
 
         for idx in temp_zip:
             self.tbl.setItem(*idx[0], QTableWidgetItem(str(idx[1])))
