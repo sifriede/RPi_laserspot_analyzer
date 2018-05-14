@@ -78,16 +78,14 @@ class FitParamDialog(QDialog):
         # Line edits
         self._start_sig = {'x': sigma_x, 'y': sigma_y}
         self._ln_edt = {'x': QLineEdit(), 'y': QLineEdit()}
+        self._ln_edt['x'].setValidator(QIntValidator(1, 1e9))
         self._ln_edt['x'].setText("{:0d}".format(self._start_sig['x']))
+        self._ln_edt['y'].setValidator(QIntValidator(1, 1e9))
         self._ln_edt['y'].setText("{:0d}".format(self._start_sig['y']))
 
         self.ui_init()
 
     def ui_init(self):
-
-        # Line edits
-        self._ln_edt['x'].textChanged.connect(lambda: self.input('x'))
-        self._ln_edt['y'].textChanged.connect(lambda: self.input('y'))
 
         # Grid layout
         lyt_edt = QGridLayout()
@@ -112,14 +110,9 @@ class FitParamDialog(QDialog):
         self.setLayout(lyt_global)
         self.show()
 
-    def input(self, idx):
-        if not self._ln_edt[idx].text().isdigit():
-            QMessageBox.about(self, 'Error', 'Input must be an integer')
-            self._ln_edt[idx].setText("{:0d}".format(self._start_sig[idx]))
-
     def return_list(self):
         try:
-            return float(self._ln_edt['x'].text()), float(self._ln_edt['y'].text())
+            return int(self._ln_edt['x'].text()), int(self._ln_edt['y'].text())
         except:
             return None, None
 
@@ -486,6 +479,15 @@ class FormWidget(QWidget):
         self.txt_info = QTextEdit()
         self.txt_rslt = QTextEdit()
 
+        # LineEdits
+        self._ln_edt_px = QLineEdit()
+        self._ln_edt_px.setMaximumWidth(50)
+        self._ln_edt_px.setValidator(QDoubleValidator(.1, 1e5, 1))
+        self._ln_edt_um = QLineEdit()
+        self._ln_edt_um.setMaximumWidth(50)
+        self._ln_edt_um.setValidator(QDoubleValidator(.1, 1e5, 1))
+        self.reset_scale(True)
+
         # Shortcuts
         self.shortcut_live = QShortcut(QKeySequence("Ctrl+L"), self)
         self.shortcut_live_stop = QShortcut(QKeySequence("Ctrl+K"), self)
@@ -495,8 +497,10 @@ class FormWidget(QWidget):
         self.init_ui(parent)
 
     def init_ui(self, parent):
+        # Test signal
         self.sig.my_event.connect(self.close)
 
+        # Slider
         self.sp_m_x.setTickPosition(QSlider.TicksBelow)
         self.sp_m_x.sliderReleased.connect(self.change_mean_val)
 
@@ -504,11 +508,13 @@ class FormWidget(QWidget):
         self.sp_m_y.sliderReleased.connect(self.change_mean_val)
         self.sp_m_y.setInvertedAppearance(True)
 
+        # Plot layout
         lyt_plt = QGridLayout()
         lyt_plt.addWidget(self.m, 1, 0)
         lyt_plt.addWidget(self.sp_m_x, 0, 0)
         lyt_plt.addWidget(self.sp_m_y, 1, 1)
 
+        # Result table
         self.tbl.setObjectName("table_view")
         self.tbl.setRowCount(2)
         self.tbl.setColumnCount(3)
@@ -525,8 +531,24 @@ class FormWidget(QWidget):
         for idx in self.tbl_indices:
             self.tbl.setItem(*idx, QTableWidgetItem("No Results yet"))
 
+        # LineEdit
+        self._ln_edt_px.returnPressed.connect(self.change_scale)
+        self._ln_edt_um.returnPressed.connect(self.change_scale)
+
+        lyt_ln_edt = QHBoxLayout()
+        lyt_ln_edt.addWidget(self._ln_edt_px)
+        lyt_ln_edt.addWidget(QLabel("/"))
+        lyt_ln_edt.addWidget(self._ln_edt_um)
+
+        lyt_ln_edt_vrt = QVBoxLayout()
+        lyt_ln_edt_vrt.addWidget(QLabel("pixel / um"), 0, Qt.AlignCenter)
+        lyt_ln_edt_vrt.addLayout(lyt_ln_edt)
+
+        # Navigation Layout
         lyt_nav = QHBoxLayout()
         lyt_nav.addWidget(self.m_toolbar)
+        lyt_nav.addStretch(1)
+        lyt_nav.addLayout(lyt_ln_edt_vrt)
         lyt_nav.addWidget(self.tbl)
 
         self.txt_info.setReadOnly(True)
@@ -534,7 +556,6 @@ class FormWidget(QWidget):
         self.txt_rslt.setMinimumHeight(50)
 
         lyt_txt = QGridLayout()
-
         lyt_txt.setSpacing(5)
         lyt_txt.addWidget(QLabel("Info"), 0, 0)
         lyt_txt.addWidget(self.txt_info, 1, 0)
@@ -567,6 +588,14 @@ class FormWidget(QWidget):
         btn_reset_slider = QPushButton("Center Slider")
         btn_reset_slider.clicked.connect(self.reset_slider)
 
+        btn_reset_scale = QPushButton("Reset Scale")
+        btn_reset_scale.clicked.connect(self.reset_scale)
+
+        lyt_btn_rst = QVBoxLayout()
+        lyt_btn_rst.setSpacing(0)
+        lyt_btn_rst.addWidget(btn_reset_slider)
+        lyt_btn_rst.addWidget(btn_reset_scale)
+
         btn_save = QPushButton("Save")
         btn_save.clicked.connect(self.save)
 
@@ -581,7 +610,7 @@ class FormWidget(QWidget):
         lyt_btn.addWidget(self.btn_plot_pic)
         lyt_btn.addWidget(self.btn_plot_file)
         lyt_btn.addWidget(btn_fitparam)
-        lyt_btn.addWidget(btn_reset_slider)
+        lyt_btn.addLayout(lyt_btn_rst)
         lyt_btn.addLayout(lyt_cctr)
         lyt_btn.addWidget(btn_show_img)
 
@@ -628,23 +657,22 @@ class FormWidget(QWidget):
             old_new = "Old"
 
         self.append_to_txt_info("{} fit parameter:\nx: {}\ny: {} ".format(old_new, self.m.init_x, self.m.init_y))
-
-        msg = QMessageBox()
-        msg.setIcon(QMessageBox.Question)
-        msg.setText("Recalculate the fit?")
-        # msg.setWindowTitle("Recalculation?")
-        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        if msg.exec() == QMessageBox.Yes:
-            self.append_to_txt_info("Start calculating...")
-            self.exec_calc()
-        else:
-            self.append_to_txt_info("Doing nothing")
+        self.recalculate()
 
     def change_mean_val(self):
         self.m.init_x["mu"] = self.sp_m_x.value()
         self.m.init_y["mu"] = self.sp_m_y.value()
         if self.m.last_img is not None:
             self.exec_calc()
+
+    def change_scale(self):
+        try:
+            px = float(self._ln_edt_px.text())
+            um = float(self._ln_edt_um.text())
+            self.m.pxl2um = px / um
+            self.append_to_txt_info("New scaling factor: {}".format(self.m.pxl2um))
+        except:
+            self.append_to_txt_info("Error setting new scale")
 
     def choose_file(self):
         self.append_to_txt_info("Please choose a picture...")
@@ -694,12 +722,34 @@ class FormWidget(QWidget):
         self.ln_edt_y.setText('({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[2:]))
         self.ln_edt_wy.setText('({:.2f} +/- {:.2f}) um'.format(*FWHMy))
 
+    def recalculate(self):
+        if self.m.last_img is None:
+            self.append_to_txt_info("No image data yet")
+            return
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Question)
+        msg.setText("Recalculate the fit?")
+        # msg.setWindowTitle("Recalculation?")
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        if msg.exec() == QMessageBox.Yes:
+            self.append_to_txt_info("Start calculating...")
+            self.exec_calc()
+        else:
+            self.append_to_txt_info("Doing nothing")
+
     def reset_slider(self):
         if self.m.last_img is None:
             self.append_to_txt_info("No image selected yet")
             return
         self.m.reset_mean_val(self.m.last_img)
         self.exec_calc()
+
+    def reset_scale(self, init=False):
+        self._ln_edt_px.setText("{}".format(3760))
+        self._ln_edt_um.setText("{}".format(2592))
+        if not init:
+            self.change_scale()
+            self.recalculate()
 
     def save(self):
         if self.m.img_color is None:
