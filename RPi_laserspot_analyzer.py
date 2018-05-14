@@ -69,6 +69,7 @@ if picamfound:
 # FigureCanvas
 #############################
 class PlotAnalyseCanvas(FigureCanvas):
+    msg2str = pyqtSignal(str)
 
     def __init__(self, parent=None, pxl2um=None, width=5, height=4, dpi=100):
         # super(PlotAnalyseCanvas, self).__init__(parent)
@@ -116,7 +117,6 @@ class PlotAnalyseCanvas(FigureCanvas):
         return a * np.exp(-((x - mu) ** 2 / (2 * sigma ** 2)) ** p) + offset
 
     def calc_data(self):
-        # Check self.last_img
         if type(self.last_img) is np.ndarray:
             img_data = self.last_img
         else:
@@ -132,7 +132,12 @@ class PlotAnalyseCanvas(FigureCanvas):
         if img_data.ndim == 2:
             self.img_color = img_data
         else:
-            self.img_color = img_data[:, :, self.color]
+            try:
+                self.img_color = img_data[:, :, self.color]
+            except:
+                self.error_msg = "Could not calc from last_img = {}".format(self.last_img)
+                print(self.error_msg)
+                return self.error_msg
 
         # Define x and y values from selected image
         x_x = np.linspace(0, len(self.img_color[0, :]), len(self.img_color[0, :]))
@@ -268,7 +273,7 @@ class PlotAnalyseCanvas(FigureCanvas):
 
             if self.last_img.endswith('.npz'):
                 temp = np.load(self.last_img)
-                self.last_img = temp.items()[0][1]
+                self.last_img = temp.items()[0][1]  # Assumption: img is first item of .npz-file
 
             else:
                 self.last_img = mpimg.imread(self.last_img)
@@ -281,7 +286,14 @@ class PlotAnalyseCanvas(FigureCanvas):
             print(self.error_msg)
             return self.error_msg
 
-        self.calc_data()
+        if self.last_img.size == 0:
+            self.error_msg = "Read image is empty"
+            self.msg2str.emit(self.error_msg)
+            print(self.error_msg)
+            return self.error_msg
+
+        else:
+            self.calc_data()
 
     def print_init(self):
         # For debugging purpose
@@ -439,12 +451,13 @@ class FormWidget(QWidget):
         # UI Elements
         self.m = PlotAnalyseCanvas(self, None, 2 * parent.my_width, 2.5 * parent.my_height)
         self.m_toolbar = NavigationToolbar(self.m, self)
+        self.m.msg2str[str].connect(self.append_to_txt_info)
         self.sp_m_x = QSlider(Qt.Horizontal)
         self.sp_m_y = QSlider(Qt.Vertical)
 
         # Buttons
         self.btn_live_view = QPushButton("Start Live View\n(Ctrl + L)")
-        self.btn_plot_file = QPushButton("Plot from File")
+        self.btn_plot_file = QPushButton("Load")
         self.btn_plot_pic = QPushButton("Take picture and plot\n(Ctrl + T)")
 
         # Combo Boxes
@@ -545,7 +558,6 @@ class FormWidget(QWidget):
         btn_fitparam = QPushButton("Change fit\nstart parameter")
         btn_fitparam.clicked.connect(self.change_fitparameter)
 
-
         btn_close = QPushButton("Close")
         btn_close.clicked.connect(qApp.quit)
 
@@ -570,11 +582,19 @@ class FormWidget(QWidget):
 
         self.setLayout(lyt_glob)
 
+    def append_to_txt_info(self, text):
+        now = datetime.datetime.now()
+        tmp_txt = "{}  {}\n----------".format(now.strftime("%Y-%m-%d %H:%M:%S"), text)
+        self.txt_info.append(tmp_txt)
+        c = self.txt_info.textCursor()
+        c.movePosition(QTextCursor.End)
+        self.txt_info.setTextCursor(c)
+
     def change_color(self):
         if self.m.last_img is None:
-            self.txt_info.append("No image selected yet")
+            self.append_to_txt_info("No image selected yet")
             return
-        self.txt_info.append("Color {} selected".format(self.cbb_plot_cctr.currentText()))
+        self.append_to_txt_info("Color {} selected".format(self.cbb_plot_cctr.currentText()))
         self.m.change_color_channel(self.cbb_plot_cctr.currentIndex())
         self.exec_calc()
 
@@ -582,16 +602,16 @@ class FormWidget(QWidget):
         return
 
     def choose_file(self):
-        self.txt_info.append("Please choose a picture...")
+        self.append_to_txt_info("Please choose a picture...")
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
-        my_img, _ = QFileDialog.getOpenFileName(self, "QFileDialog.getOpenFileName()", "",
+        my_img, _ = QFileDialog.getOpenFileName(self, "Load File", "",
                                                 "Images (*.png *.jpg *.tiff *.bmp *.npz);;All Files (*)",
                                                 options=options)
         # Debug
         # my_img = "last_img.npz"
         if my_img:
-            self.txt_info.append('{} chosen'.format(my_img))
+            self.append_to_txt_info('{} chosen'.format(my_img))
             self.m.last_img = my_img
             self.exec_calc()
 
@@ -599,23 +619,27 @@ class FormWidget(QWidget):
         # Plot and analyse
         self.m.img_to_data()
 
-        # Result handling
-        rslt_str = "{}\n" \
-                   "2*sigma_(x,rms) = ({:.2f} +/- {:.2f}) um\n" \
-                   "2*sigma_(y,rms) = ({:.2f} +/- {:.2f}) um\n" \
-            .format(self.m.now.strftime("%Y-%m-%d %H:%M:%S"), *self.m.last_rslt)
-        self.txt_rslt.append(rslt_str)
-        time.sleep(.5)
+        if self.m.last_rslt is not None:
+            # Result handling
+            rslt_str = "{}\n" \
+                       "2*sigma_(x,rms) = ({:.2f} +/- {:.2f}) um\n" \
+                       "2*sigma_(y,rms) = ({:.2f} +/- {:.2f}) um\n" \
+                .format(self.m.now.strftime("%Y-%m-%d %H:%M:%S"), *self.m.last_rslt)
+            self.txt_rslt.append(rslt_str)
+            time.sleep(.25)
 
-        # Adopt slider to image axis
-        self.set_slider()
+            # Adopt slider to image axis
+            self.set_slider()
 
-        # self.ln_edt_latest_rslt()
-        self.write_to_table()
+            # self.ln_edt_latest_rslt()
+            self.write_to_table()
 
     @staticmethod
     def FWHM(sigma, order=1):
-        return np.sqrt(2) * np.log(2) ** (1 / order) * sigma
+        if order != 0:
+            return np.sqrt(2) * np.log(2) ** (1 / order) * sigma
+        else:
+            return 0
 
     def ln_edt_latest_rslt(self):
         FWHMx = [self.FWHM(x, self.m.data_x_rslt[0][-1]) for x in self.m.last_rslt[:2]]
@@ -627,23 +651,24 @@ class FormWidget(QWidget):
 
     def reset_slider(self):
         if self.m.last_img is None:
-            self.txt_info.append("No image selected yet")
+            self.append_to_txt_info("No image selected yet")
             return
         self.m.reset_mean_val(self.m.last_img)
         self.exec_calc()
 
     def save(self):
-        self.txt_info.append("Please choose a saving path...")
+        if self.m.img_color is None:
+            self.append_to_txt_info("No data to be saved")
+            return
+
+        self.append_to_txt_info("Please choose a saving path...")
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
         my_path, _ = QFileDialog.getSaveFileName(self, "Save to", "last_img.npz",
                                                  "Numpy (*.npz);;All Files (*)", options=options)
 
         if not my_path:
-            self.txt_info.append("Saving aborted!")
-            return
-        if self.m.img_color is None:
-            self.txt_info.append("No data to be saved")
+            self.append_to_txt_info("Saving aborted!")
             return
 
         img = self.m.img_color
@@ -658,7 +683,7 @@ class FormWidget(QWidget):
                             fitx_popt=fitx_popt, fitx_pcov=fitx_pcov,
                             fity_popt=fity_popt, fity_pcov=fity_pcov)
 
-        self.txt_info.append("Saving successful")
+        self.append_to_txt_info("Saving successful")
 
     def set_slider(self):
         self.sp_m_x.setMinimum(min(self.m.data_x[0]))
@@ -671,7 +696,7 @@ class FormWidget(QWidget):
 
     def start_live_view_shortcut(self):
         if not picamfound:
-            self.txt_info.append("Live view not available: No picamera module loaded")
+            self.append_to_txt_info("Live view not available: No picamera module loaded")
             return
         self.btn_live_view.setChecked(True)
         self.btn_live_view.setText("Stop Live View\n(Ctrl + K)")
@@ -679,7 +704,7 @@ class FormWidget(QWidget):
 
     def stop_live_view_shortcut(self):
         if not picamfound:
-            self.txt_info.append("Live view not available: No picamera module loaded")
+            self.append_to_txt_info("Live view not available: No picamera module loaded")
             return
         self.btn_live_view.setChecked(False)
         self.btn_live_view.setText("Start Live View\n(Ctrl + L)")
@@ -687,12 +712,12 @@ class FormWidget(QWidget):
 
     def start_live_view(self, btn):
         if not picamfound:
-            self.txt_info.append("Live view not available: No picamera module loaded")
+            self.append_to_txt_info("Live view not available: No picamera module loaded")
             return
 
         if btn.isChecked():
-            self.txt_info.append("Live view started")
-            self.txt_info.append("Camera resolution: {}x{}".format(*self.camera.resolution))
+            self.append_to_txt_info("Live view started")
+            self.append_to_txt_info("Camera resolution: {}x{}".format(*self.camera.resolution))
             self.btn_live_view.setText("Stop Live View\n(Ctrl + K)")
             self.camera.my_start_preview()
 
@@ -703,15 +728,15 @@ class FormWidget(QWidget):
 
     def show_img(self):
         if self.raw_bayer_data is None:
-            self.txt_info.append("No raw image data found")
+            self.append_to_txt_info("No raw image data found")
             return
-        self.txt_info.append("Showing picture (this may take some time)...")
+        self.append_to_txt_info("Showing picture (this may take some time)...")
         self.m.show_img(self.raw_bayer_data)
-        self.txt_info.append("Showing picture done.")
+        self.append_to_txt_info("Showing picture done.")
 
     def take_picture(self):
         if not picamfound:
-            self.txt_info.append("Live view not available: No picamera module loaded")
+            self.append_to_txt_info("Live view not available: No picamera module loaded")
             return
         # now = datetime.datetime.now()
         self.camera.my_start_preview()
@@ -725,7 +750,7 @@ class FormWidget(QWidget):
         self.camera.stop_preview()
         self.btn_live_view.setChecked(False)
         self.btn_live_view.setText("Start Live View\n(Ctrl + L)")
-        self.txt_info.append("Picture taken!")
+        self.append_to_txt_info("Picture taken!")
         self.m.img_title = "Last Taken Picture (raw)"
         self.m.last_img = self.raw_bayer_data.array
         self.exec_calc()
@@ -741,7 +766,7 @@ class FormWidget(QWidget):
 
     def write_to_table(self):
         if self.m.last_rslt is None:
-            self.txt_info.append("No results yet")
+            self.append_to_txt_info("No results yet")
             return None
         FWHMx = [self.FWHM(x, self.m.data_x_rslt[0][-1]) for x in self.m.last_rslt[:2]]
         FWHMy = [self.FWHM(y, self.m.data_y_rslt[0][-1]) for y in self.m.last_rslt[2:]]
