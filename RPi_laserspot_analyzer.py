@@ -23,13 +23,14 @@ from PyQt5.QtCore import *
 try:
     import picamera
     from picamera.array import PiBayerArray
+
     picamfound = True
 
 except ImportError:
     print("No picamera module found, camera not available!")
     picamfound = False
 
-version = 1.5
+version = 1.6
 
 
 #############################
@@ -64,6 +65,66 @@ if picamfound:
                 fullscreen=False,
                 window=(self.prev_left, self.prev_top, self.prev_width, self.prev_height)
             )
+
+
+#############################
+# Custom Dialog: Change fit parameter
+#############################
+class FitParamDialog(QDialog):
+
+    def __init__(self, sigma_x, sigma_y):
+        super().__init__()
+
+        # Line edits
+        self._start_sig = {'x': sigma_x, 'y': sigma_y}
+        self._ln_edt = {'x': QLineEdit(), 'y': QLineEdit()}
+        self._ln_edt['x'].setText("{:0d}".format(self._start_sig['x']))
+        self._ln_edt['y'].setText("{:0d}".format(self._start_sig['y']))
+
+        self.ui_init()
+
+    def ui_init(self):
+
+        # Line edits
+        self._ln_edt['x'].textChanged.connect(lambda: self.input('x'))
+        self._ln_edt['y'].textChanged.connect(lambda: self.input('y'))
+
+        # Grid layout
+        lyt_edt = QGridLayout()
+        lyt_edt.addWidget(QLabel("\u03c3_rms_x [px]"), 0, 0)
+        lyt_edt.addWidget(QLabel("\u03c3_rms_y [px]"), 1, 0)
+        lyt_edt.addWidget(self._ln_edt['x'], 0, 1)
+        lyt_edt.addWidget(self._ln_edt['y'], 1, 1)
+
+        # Ok and Cancel Buttons
+        btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btn_box.accepted.connect(self.accept)
+        btn_box.rejected.connect(self.reject)
+
+        # Global Layout
+        lyt_global = QVBoxLayout()
+        lyt_global.addLayout(lyt_edt)
+        lyt_global.addWidget(btn_box)
+
+        self.setWindowTitle("Change fit parameters")
+        self.setMinimumWidth(200)
+        self.setWindowFlags(Qt.WindowCloseButtonHint)
+        self.setLayout(lyt_global)
+        self.show()
+
+    def input(self, idx):
+        if not self._ln_edt[idx].text().isdigit():
+            QMessageBox.about(self, 'Error', 'Input must be an integer')
+            self._ln_edt[idx].setText("{:0d}".format(self._start_sig[idx]))
+
+    def return_list(self):
+        try:
+            return float(self._ln_edt['x'].text()), float(self._ln_edt['y'].text())
+        except:
+            return None, None
+
+
+##return self._ln_edt_x, self._ln_edt_y.
 
 
 #############################
@@ -109,10 +170,6 @@ class PlotAnalyseCanvas(FigureCanvas):
         FigureCanvas.updateGeometry(self)
 
     @staticmethod
-    def gaussian(x, a, mu, sigma, offset):
-        return a / (sigma * np.sqrt(2 * np.pi)) * np.exp(-(x - mu) ** 2 / (2 * sigma ** 2)) + offset
-
-    @staticmethod
     def func(x, a, mu, sigma, offset, p=1):
         # return a / (sigma * np.sqrt(2 * np.pi)) * np.exp(-((x - mu) ** 2 / (2 * sigma ** 2)) ** p) - offset
         return a * np.exp(-((x - mu) ** 2 / (2 * sigma ** 2)) ** p) + offset
@@ -140,6 +197,10 @@ class PlotAnalyseCanvas(FigureCanvas):
                 print(self.error_msg)
                 return self.error_msg
 
+        # In case a newly loaded picture has a smaller size, this is needed
+        if self.init_x['mu'] > self.img_color.shape[1] or self.init_y['mu'] > self.img_color.shape[0]:
+            self.reset_mean_val(img_data)
+
         # Define x and y values from selected image
         x_x = np.linspace(0, len(self.img_color[0, :]), len(self.img_color[0, :]))
         x_y = self.img_color[self.init_y['mu'], :] / sum(self.img_color[self.init_y['mu'], :])
@@ -153,66 +214,11 @@ class PlotAnalyseCanvas(FigureCanvas):
         # Todo find better sigma initial value
         # ToDo create Dialog to change these parameters
 
-        ####################################################################################################
-        # Gaussian order only integer
-        # if None in self.init_x.values():
-        #     self.init_x = dict(amp=max(x_y), mu=self.init_x['mu'], sig=200, off=min(x_y))
-        # if None in self.init_y.values():
-        #     self.init_y = dict(amp=max(x_y), mu=self.init_y['mu'], sig=200, off=min(y_y))
-        #
-        # self.print_init()
-        #
-        # # Filter empty sensor data before fitting
-        # self.temp_x = np.array([itm for itm in self.data_x.T if itm[1] != 0]).T
-        # self.temp_y = np.array([itm for itm in self.data_y.T if itm[1] != 0]).T
-        #
-        # try:
-        #     # Residuals
-        #     s_x, s_y = {}, {}
-        #     # x line
-        #     popt_x, pcov_x = curve_fit(lambda x, amp, mu, sig, off: self.func(x, amp, mu, sig, off, 1),
-        #                                *self.temp_x,
-        #                                p0=list(self.init_x.values()))
-        #     s_x[1] = sum((self.func(self.temp_x[0], *popt_x) - self.temp_x[1]) ** 2)
-        #     for q in range(2, 11):
-        #         temp_popt_x, temp_pcov_x = curve_fit(lambda x, amp, mu, sig, off: self.func(x, amp, mu, sig, off, q),
-        #                                              *self.temp_x,
-        #                                              p0=list(self.init_x.values()))
-        #
-        #         s_x[q] = sum((self.func(self.temp_x[0], *popt_x) - self.temp_x[1]) ** 2)
-        #
-        #         if s_x[q] > s_x[q - 1]:
-        #             self.order_x = q - 1
-        #             break
-        #
-        #         else:
-        #             popt_x, pcov_x = temp_popt_x, temp_pcov_x
-        #
-        #     # y line
-        #     popt_y, pcov_y = curve_fit(lambda y, amp, mu, sig, off: self.func(y, amp, mu, sig, off, 1),
-        #                                *self.temp_y,
-        #                                p0=list(self.init_y.values()))
-        #     s_y[1] = sum((self.func(self.temp_y[0], *popt_y) - self.temp_y[1]) ** 2)
-        #     for p in range(2, 11):
-        #         temp_popt_y, temp_pcov_y = curve_fit(lambda y, amp, mu, sig, off: self.func(y, amp, mu, sig, off, p),
-        #                                              *self.temp_y,
-        #                                              p0=list(self.init_y.values()))
-        #
-        #         s_y[p] = sum((self.func(self.temp_y[0], *popt_y) - self.temp_y[1]) ** 2)
-        #         if s_y[p] > s_y[p - 1]:
-        #             self.order_y = p - 1
-        #             break
-        #         else:
-        #             popt_y, pcov_y = temp_popt_y, temp_pcov_y
-        #
-        #     print("Fit was successful!")
-
-        ####################################################################################################
         # Gaussian order may be arbitrary
         if None in self.init_x.values():
             self.init_x = dict(amp=max(x_y), mu=self.init_x['mu'], sig=200, off=min(x_y), p=self.order_x)
         if None in self.init_y.values():
-            self.init_y = dict(amp=max(x_y), mu=self.init_y['mu'], sig=200, off=min(y_y), p=self.order_y)
+            self.init_y = dict(amp=max(y_y), mu=self.init_y['mu'], sig=200, off=min(y_y), p=self.order_y)
 
         self.print_init()
 
@@ -220,28 +226,35 @@ class PlotAnalyseCanvas(FigureCanvas):
         self.temp_x = np.array([itm for itm in self.data_x.T if itm[1] != 0]).T
         self.temp_y = np.array([itm for itm in self.data_y.T if itm[1] != 0]).T
 
+        # In case the fit does not work
+        idx = len(self.init_x)
+
+        # Start fitting x values
         try:
-            # Residuals
-            s_x, s_y = {}, {}
-            # x line
+            print("Try fitting x values with self.init_x.values() = {}".format(self.init_x.values()))
             popt_x, pcov_x = curve_fit(self.func, *self.temp_x, p0=list(self.init_x.values()))
-
-            # y line
-            popt_y, pcov_y = curve_fit(self.func, *self.temp_y, p0=list(self.init_y.values()))
-
-            print("Fit was successful!")
+            print("x fit was successful!")
 
         except:
-            idx = len(self.init_x)
-            popt_x, popt_y = np.zeros(idx), np.zeros(idx)
-            popt_x[2], popt_y[2] = 1, 1
-            pcov_x, pcov_y = np.zeros((idx, idx)), np.zeros((idx, idx))
+            popt_x, pcov_x = np.zeros(idx), np.zeros((idx, idx))
+            # Sigmas must be positive
+            popt_x[2] = 1
+            print("x fit failed!")
+
+        # Start fitting y values
+        try:
+            # y line
+            print("Try fitting y values with self.init_y.values() = {}".format(self.init_y.values()))
+            popt_y, pcov_y = curve_fit(self.func, *self.temp_y, p0=list(self.init_y.values()))
+            print("y fit was successful!")
+
+        except:
+            popt_y, pcov_y = np.zeros(idx), np.zeros((idx, idx))
+            popt_y[2] = 1
             print("Fit failed!")
 
         self.data_x_rslt = [popt_x, pcov_x]
-        # np.append(self.data_x_rslt[0], self.order_x)
         self.data_y_rslt = [popt_y, pcov_y]
-        # np.append(self.data_y_rslt[0], self.order_y)
 
         self.now = datetime.datetime.now()
 
@@ -372,6 +385,7 @@ class PlotAnalyseCanvas(FigureCanvas):
     def reset_mean_val(self, img_data):
         self.init_x['mu'] = int(np.round(img_data.shape[1] / 2))
         self.init_y['mu'] = int(np.round(img_data.shape[0] / 2))
+        self.msg2str.emit("Resetting mean values:\nx_mu = {}\ny_mu = {}".format(self.init_x['mu'], self.init_y['mu']))
 
     def show_img(self, pic=None):
         if pic is None:
@@ -458,8 +472,8 @@ class FormWidget(QWidget):
 
         # Buttons
         self.btn_live_view = QPushButton("Start Live View\n(Ctrl + L)")
-        self.btn_plot_file = QPushButton("Load")
         self.btn_plot_pic = QPushButton("Take picture and plot\n(Ctrl + T)")
+        self.btn_plot_file = QPushButton("Load")
 
         # Combo Boxes
         self.cbb_plot_cctr = QComboBox()
@@ -543,7 +557,7 @@ class FormWidget(QWidget):
         self.cbb_plot_cctr.setCurrentIndex(self.m.color)
         self.cbb_plot_cctr.currentIndexChanged.connect(self.change_color)
 
-        btn_show_img = QPushButton("Display converted raw image data")
+        btn_show_img = QPushButton("Display converted\nraw image data")
         btn_show_img.clicked.connect(self.show_img)
 
         lyt_cctr = QHBoxLayout()
@@ -553,10 +567,10 @@ class FormWidget(QWidget):
         btn_reset_slider = QPushButton("Center Slider")
         btn_reset_slider.clicked.connect(self.reset_slider)
 
-        btn_save = QPushButton("Save last result")
+        btn_save = QPushButton("Save")
         btn_save.clicked.connect(self.save)
 
-        btn_fitparam = QPushButton("Change fit\nstart parameter")
+        btn_fitparam = QPushButton("Fit options")
         btn_fitparam.clicked.connect(self.change_fitparameter)
 
         btn_close = QPushButton("Close")
@@ -564,14 +578,15 @@ class FormWidget(QWidget):
 
         lyt_btn = QHBoxLayout()
         lyt_btn.addWidget(self.btn_live_view)
-        lyt_btn.addWidget(self.btn_plot_file)
         lyt_btn.addWidget(self.btn_plot_pic)
-        lyt_btn.addLayout(lyt_cctr)
-        lyt_btn.addWidget(btn_reset_slider)
-        lyt_btn.addWidget(btn_show_img)
-        lyt_btn.addWidget(btn_save)
+        lyt_btn.addWidget(self.btn_plot_file)
         lyt_btn.addWidget(btn_fitparam)
+        lyt_btn.addWidget(btn_reset_slider)
+        lyt_btn.addLayout(lyt_cctr)
+        lyt_btn.addWidget(btn_show_img)
+
         lyt_btn.addStretch(1)
+        lyt_btn.addWidget(btn_save)
         lyt_btn.addWidget(btn_close)
 
         # global layout
@@ -600,7 +615,36 @@ class FormWidget(QWidget):
         self.exec_calc()
 
     def change_fitparameter(self):
-        return
+
+        if self.m.last_img is None:
+            self.append_to_txt_info("No image selected yet")
+            return
+
+        fdlg = FitParamDialog(self.m.init_x['sig'], self.m.init_y['sig'])
+        if fdlg.exec_():
+            old_new = "New"
+            self.m.init_x['sig'], self.m.init_y['sig'] = fdlg.return_list()
+        else:
+            old_new = "Old"
+
+        self.append_to_txt_info("{} fit parameter:\nx: {}\ny: {} ".format(old_new, self.m.init_x, self.m.init_y))
+
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Question)
+        msg.setText("Recalculate the fit?")
+        # msg.setWindowTitle("Recalculation?")
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        if msg.exec() == QMessageBox.Yes:
+            self.append_to_txt_info("Start calculating...")
+            self.exec_calc()
+        else:
+            self.append_to_txt_info("Doing nothing")
+
+    def change_mean_val(self):
+        self.m.init_x["mu"] = self.sp_m_x.value()
+        self.m.init_y["mu"] = self.sp_m_y.value()
+        if self.m.last_img is not None:
+            self.exec_calc()
 
     def choose_file(self):
         self.append_to_txt_info("Please choose a picture...")
@@ -759,12 +803,6 @@ class FormWidget(QWidget):
     def test_emit_close_signal(self):
         self.sig.my_event.emit()
 
-    def change_mean_val(self):
-        self.m.init_x["mu"] = self.sp_m_x.value()
-        self.m.init_y["mu"] = self.sp_m_y.value()
-        if self.m.last_img is not None:
-            self.exec_calc()
-
     def write_to_table(self):
         if self.m.last_rslt is None:
             self.append_to_txt_info("No results yet")
@@ -791,5 +829,59 @@ if __name__ == '__main__':
     mw = MyMainWindow()
     sys.exit(app.exec_())  # Mainloop
 
-# ToDo Show complete fit result matrix
-# ToDo Button to recenter slider
+# Old Code
+####################################################################################################
+# Gaussian order only integer
+# if None in self.init_x.values():
+#     self.init_x = dict(amp=max(x_y), mu=self.init_x['mu'], sig=200, off=min(x_y))
+# if None in self.init_y.values():
+#     self.init_y = dict(amp=max(x_y), mu=self.init_y['mu'], sig=200, off=min(y_y))
+#
+# self.print_init()
+#
+# # Filter empty sensor data before fitting
+# self.temp_x = np.array([itm for itm in self.data_x.T if itm[1] != 0]).T
+# self.temp_y = np.array([itm for itm in self.data_y.T if itm[1] != 0]).T
+#
+# try:
+#     # Residuals
+#     s_x, s_y = {}, {}
+#     # x line
+#     popt_x, pcov_x = curve_fit(lambda x, amp, mu, sig, off: self.func(x, amp, mu, sig, off, 1),
+#                                *self.temp_x,
+#                                p0=list(self.init_x.values()))
+#     s_x[1] = sum((self.func(self.temp_x[0], *popt_x) - self.temp_x[1]) ** 2)
+#     for q in range(2, 11):
+#         temp_popt_x, temp_pcov_x = curve_fit(lambda x, amp, mu, sig, off: self.func(x, amp, mu, sig, off, q),
+#                                              *self.temp_x,
+#                                              p0=list(self.init_x.values()))
+#
+#         s_x[q] = sum((self.func(self.temp_x[0], *popt_x) - self.temp_x[1]) ** 2)
+#
+#         if s_x[q] > s_x[q - 1]:
+#             self.order_x = q - 1
+#             break
+#
+#         else:
+#             popt_x, pcov_x = temp_popt_x, temp_pcov_x
+#
+#     # y line
+#     popt_y, pcov_y = curve_fit(lambda y, amp, mu, sig, off: self.func(y, amp, mu, sig, off, 1),
+#                                *self.temp_y,
+#                                p0=list(self.init_y.values()))
+#     s_y[1] = sum((self.func(self.temp_y[0], *popt_y) - self.temp_y[1]) ** 2)
+#     for p in range(2, 11):
+#         temp_popt_y, temp_pcov_y = curve_fit(lambda y, amp, mu, sig, off: self.func(y, amp, mu, sig, off, p),
+#                                              *self.temp_y,
+#                                              p0=list(self.init_y.values()))
+#
+#         s_y[p] = sum((self.func(self.temp_y[0], *popt_y) - self.temp_y[1]) ** 2)
+#         if s_y[p] > s_y[p - 1]:
+#             self.order_y = p - 1
+#             break
+#         else:
+#             popt_y, pcov_y = temp_popt_y, temp_pcov_y
+#
+#     print("Fit was successful!")
+
+####################################################################################################
