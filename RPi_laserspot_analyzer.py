@@ -23,6 +23,7 @@ from PyQt5.QtCore import *
 try:
     import picamera
     from picamera.array import PiBayerArray
+    picamfound = True
 
 except ImportError:
     print("No picamera module found, camera not available!")
