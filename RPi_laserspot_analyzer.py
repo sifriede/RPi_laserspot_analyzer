@@ -225,7 +225,7 @@ class PlotAnalyseCanvas(FigureCanvas):
         # Start fitting x values
         try:
             print("Try fitting x values with self.init_x.values() = {}".format(self.init_x.values()))
-            popt_x, pcov_x = curve_fit(self.func, *self.temp_x, p0=list(self.init_x.values()))
+            popt_x, pcov_x = curve_fit(self.func, *self.temp_x, p0=[self.init_x['amp'],self.init_x['mu'],self.init_x['sig'],self.init_x['off'],self.init_x['p']])
             print("x fit was successful!")
 
         except:
@@ -238,7 +238,7 @@ class PlotAnalyseCanvas(FigureCanvas):
         try:
             # y line
             print("Try fitting y values with self.init_y.values() = {}".format(self.init_y.values()))
-            popt_y, pcov_y = curve_fit(self.func, *self.temp_y, p0=list(self.init_y.values()))
+            popt_y, pcov_y = curve_fit(self.func, *self.temp_y, p0=[self.init_y['amp'],self.init_y['mu'],self.init_y['sig'],self.init_y['off'],self.init_y['p']])
             print("y fit was successful!")
 
         except:
@@ -280,7 +280,8 @@ class PlotAnalyseCanvas(FigureCanvas):
 
             if self.last_img.endswith('.npz'):
                 temp = np.load(self.last_img)
-                self.last_img = temp.items()[0][1]  # Assumption: img is first item of .npz-file
+                #self.last_img = temp.items()[0][1]  # Assumption: img is first item of .npz-file
+                self.last_img = temp['img']  # Assumption: image is named img
 
             else:
                 self.last_img = mpimg.imread(self.last_img)
@@ -473,6 +474,7 @@ class FormWidget(QWidget):
 
         # Tables
         self.tbl = QTableWidget()
+        self.tbl.setMinimumWidth(500)
         self.tbl_indices = None
 
         # TextEdits
