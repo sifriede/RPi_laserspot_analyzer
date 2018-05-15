@@ -538,12 +538,12 @@ class FormWidget(QWidget):
         self._ln_edt_um.returnPressed.connect(self.change_scale)
 
         lyt_ln_edt = QHBoxLayout()
-        lyt_ln_edt.addWidget(self._ln_edt_px)
-        lyt_ln_edt.addWidget(QLabel("/"))
         lyt_ln_edt.addWidget(self._ln_edt_um)
+        lyt_ln_edt.addWidget(QLabel("/"))
+        lyt_ln_edt.addWidget(self._ln_edt_px)
 
         lyt_ln_edt_vrt = QVBoxLayout()
-        lyt_ln_edt_vrt.addWidget(QLabel("pixel / um"), 0, Qt.AlignCenter)
+        lyt_ln_edt_vrt.addWidget(QLabel("um / px"), 0, Qt.AlignCenter)
         lyt_ln_edt_vrt.addLayout(lyt_ln_edt)
 
         # Navigation Layout
@@ -671,7 +671,7 @@ class FormWidget(QWidget):
         try:
             px = float(self._ln_edt_px.text())
             um = float(self._ln_edt_um.text())
-            self.m.pxl2um = px / um
+            self.m.pxl2um = um / px
             self.append_to_txt_info("New scaling factor: {}".format(self.m.pxl2um))
         except:
             self.append_to_txt_info("Error setting new scale")
@@ -747,8 +747,8 @@ class FormWidget(QWidget):
         self.exec_calc()
 
     def reset_scale(self, init=False):
-        self._ln_edt_px.setText("{}".format(3760))
-        self._ln_edt_um.setText("{}".format(2592))
+        self._ln_edt_px.setText("{}".format(2592))
+        self._ln_edt_um.setText("{}".format(3760))
         if not init:
             self.change_scale()
             self.recalculate()
