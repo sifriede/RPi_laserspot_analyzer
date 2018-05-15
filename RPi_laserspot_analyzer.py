@@ -225,7 +225,9 @@ class PlotAnalyseCanvas(FigureCanvas):
         # Start fitting x values
         try:
             print("Try fitting x values with self.init_x.values() = {}".format(self.init_x.values()))
-            popt_x, pcov_x = curve_fit(self.func, *self.temp_x, p0=[self.init_x['amp'],self.init_x['mu'],self.init_x['sig'],self.init_x['off'],self.init_x['p']])
+            popt_x, pcov_x = curve_fit(self.func, *self.temp_x,
+                                       p0=[self.init_x['amp'], self.init_x['mu'], self.init_x['sig'],
+                                           self.init_x['off'], self.init_x['p']])
             print("x fit was successful!")
 
         except:
@@ -238,7 +240,9 @@ class PlotAnalyseCanvas(FigureCanvas):
         try:
             # y line
             print("Try fitting y values with self.init_y.values() = {}".format(self.init_y.values()))
-            popt_y, pcov_y = curve_fit(self.func, *self.temp_y, p0=[self.init_y['amp'],self.init_y['mu'],self.init_y['sig'],self.init_y['off'],self.init_y['p']])
+            popt_y, pcov_y = curve_fit(self.func, *self.temp_y,
+                                       p0=[self.init_y['amp'], self.init_y['mu'], self.init_y['sig'],
+                                           self.init_y['off'], self.init_y['p']])
             print("y fit was successful!")
 
         except:
@@ -252,9 +256,9 @@ class PlotAnalyseCanvas(FigureCanvas):
         self.now = datetime.datetime.now()
 
         # 2*sigma +/- 2*sqrt(cov_sigma)
-        self.last_rslt = [2 * x * self.pxl2um for x in
-                          [self.data_x_rslt[0][2], np.sqrt(self.data_x_rslt[1][2, 2]),
-                           self.data_y_rslt[0][2], np.sqrt(self.data_y_rslt[1][2, 2])]]
+        self.last_rslt = np.array([2 * x * self.pxl2um for x in
+                                   [self.data_x_rslt[0][2], np.sqrt(self.data_x_rslt[1][2, 2]),
+                                    self.data_y_rslt[0][2], np.sqrt(self.data_y_rslt[1][2, 2])]])
         print("self.last_rslt = {}".format(self.last_rslt))
         print("Finished Calculating! Results:\n")
         self.print_init()
@@ -280,7 +284,7 @@ class PlotAnalyseCanvas(FigureCanvas):
 
             if self.last_img.endswith('.npz'):
                 temp = np.load(self.last_img)
-                #self.last_img = temp.items()[0][1]  # Assumption: img is first item of .npz-file
+                # self.last_img = temp.items()[0][1]  # Assumption: img is first item of .npz-file
                 self.last_img = temp['img']  # Assumption: image is named img
 
             else:
@@ -468,6 +472,7 @@ class FormWidget(QWidget):
         self.btn_live_view = QPushButton("Start Live View\n(Ctrl + L)")
         self.btn_plot_pic = QPushButton("Take picture and plot\n(Ctrl + T)")
         self.btn_plot_file = QPushButton("Load")
+        self.btn_scale = QPushButton("Set Scale")
 
         # Combo Boxes
         self.cbb_plot_cctr = QComboBox()
@@ -479,6 +484,7 @@ class FormWidget(QWidget):
 
         # TextEdits
         self.txt_info = QTextEdit()
+        self.txt_info.setMinimumHeight(100)
         self.txt_rslt = QTextEdit()
 
         # LineEdits
@@ -534,8 +540,8 @@ class FormWidget(QWidget):
             self.tbl.setItem(*idx, QTableWidgetItem("No Results yet"))
 
         # LineEdit
-        self._ln_edt_px.returnPressed.connect(self.change_scale)
-        self._ln_edt_um.returnPressed.connect(self.change_scale)
+        # self._ln_edt_px.returnPressed.connect(self.change_scale)
+        # self._ln_edt_um.returnPressed.connect(self.change_scale)
 
         lyt_ln_edt = QHBoxLayout()
         lyt_ln_edt.addWidget(self._ln_edt_um)
@@ -545,6 +551,8 @@ class FormWidget(QWidget):
         lyt_ln_edt_vrt = QVBoxLayout()
         lyt_ln_edt_vrt.addWidget(QLabel("um / px"), 0, Qt.AlignCenter)
         lyt_ln_edt_vrt.addLayout(lyt_ln_edt)
+        lyt_ln_edt_vrt.addWidget(self.btn_scale)
+        self.btn_scale.clicked.connect(self.change_scale)
 
         # Navigation Layout
         lyt_nav = QHBoxLayout()
@@ -673,6 +681,7 @@ class FormWidget(QWidget):
             um = float(self._ln_edt_um.text())
             self.m.pxl2um = um / px
             self.append_to_txt_info("New scaling factor: {}".format(self.m.pxl2um))
+            self.recalculate()
         except:
             self.append_to_txt_info("Error setting new scale")
 
@@ -699,7 +708,9 @@ class FormWidget(QWidget):
             rslt_str = "{}\n" \
                        "2*sigma_(x,rms) = ({:.2f} +/- {:.2f}) um\n" \
                        "2*sigma_(y,rms) = ({:.2f} +/- {:.2f}) um\n" \
-                .format(self.m.now.strftime("%Y-%m-%d %H:%M:%S"), *self.m.last_rslt)
+                       "2*sigma_(x,rms) = ({:.2f} +/- {:.2f}) px\n" \
+                       "2*sigma_(y,rms) = ({:.2f} +/- {:.2f}) px\n" \
+                .format(self.m.now.strftime("%Y-%m-%d %H:%M:%S"), *self.m.last_rslt, *self.m.last_rslt / self.m.pxl2um)
             self.txt_rslt.append(rslt_str)
             time.sleep(.25)
 
