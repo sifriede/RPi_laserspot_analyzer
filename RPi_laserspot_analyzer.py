@@ -780,16 +780,16 @@ class FormWidget(QWidget):
             return
 
         img = self.m.img_color
-        linex_x, linex_y = self.m.data_x
-        liney_x, liney_y = self.m.data_y
+        rawdatax_x, rawdatax_y = self.m.data_x
+        rawdatay_x, rawdatay_y = self.m.data_y
         fitx_popt, fitx_pcov = self.m.data_x_rslt
         fity_popt, fity_pcov = self.m.data_y_rslt
 
         np.savez_compressed(my_path, img=img,
-                            linex_x=linex_x, linex_y=linex_y,
-                            liney_x=liney_x, liney_y=liney_y,
-                            fitx_popt=fitx_popt, fitx_pcov=fitx_pcov,
-                            fity_popt=fity_popt, fity_pcov=fity_pcov)
+                            rawdatax_x=rawdatax_x, rawdatax_y=rawdatax_y,
+                            rawdatay_x=rawdatay_x, rawdatay_y=rawdatay_y,
+                            fitx_param=fitx_popt, fitx_pcov=fitx_pcov,
+                            fity_param=fity_popt, fity_pcov=fity_pcov)
 
         self.append_to_txt_info("Saving successful")
 
