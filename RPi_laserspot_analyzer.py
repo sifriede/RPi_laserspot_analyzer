@@ -30,7 +30,7 @@ except ImportError:
     print("No picamera module found, camera not available!")
     picamfound = False
 
-version = 1.6
+version = 1.7
 
 
 #############################
@@ -418,8 +418,8 @@ class MyMainWindow(QMainWindow):
         # Geometry
         self.my_left = round(0.05 * screen_res[0])
         self.my_top = round(0.05 * screen_res[0])
-        self.my_height = round(0.8 * screen_res[1])
-        self.my_width = self.my_height * 4 / 3  # round(0.8 * screen_res[0])
+        self.my_height = round(0.9 * screen_res[1])
+        self.my_width = self.my_height * 16 / 9  # round(0.8 * screen_res[0])
 
         self.form_widget = FormWidget(self)
         self.setCentralWidget(self.form_widget)
@@ -440,6 +440,14 @@ class MyMainWindow(QMainWindow):
         global version
         self.setWindowTitle('Another low budget Beam Profiler Version {}'.format(version))
         self.show()
+        self.center()
+
+    def center(self):
+        frameGm = self.frameGeometry()
+        screen = QApplication.desktop().screenNumber(QApplication.desktop().cursor().pos())
+        centerPoint = QApplication.desktop().screenGeometry(screen).center()
+        frameGm.moveCenter(centerPoint)
+        self.move(frameGm.topLeft())
 
 
 #############################
