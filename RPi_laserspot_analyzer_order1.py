@@ -731,7 +731,7 @@ class FormWidget(QWidget):
     @staticmethod
     def FWHM(sigma, order=1):
         if order != 0:
-            return np.sqrt(2) * np.log(2) ** (1 / order) * sigma
+            return 2 * np.sqrt(2) * np.log(2) ** (1 / (2*order)) * sigma
         else:
             return 0
 
