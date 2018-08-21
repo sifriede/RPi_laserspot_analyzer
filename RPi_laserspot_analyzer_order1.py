@@ -729,13 +729,14 @@ class FormWidget(QWidget):
             self.write_to_table()
 
     @staticmethod
-    def FWHM(sigma, order=1):
+    def FWHM(two_sigma, order=1):
         if order != 0:
-            return 2 * np.sqrt(2) * np.log(2) ** (1 / (2*order)) * sigma
+            return  np.sqrt(2) * np.log(2) ** (1 / (2*order)) * two_sigma
         else:
             return 0
 
     def ln_edt_latest_rslt(self):
+        ## Info: m.last_rslt = [2*sigmax, 2*Delta_sigmax, 2*sigmay, 2*Delta_sigmay]
         FWHMx = [self.FWHM(x, self.m.data_x_rslt[0][-1]) for x in self.m.last_rslt[:2]]
         FWHMy = [self.FWHM(y, self.m.data_y_rslt[0][-1]) for y in self.m.last_rslt[2:]]
         self.ln_edt_x.setText('({:.2f} +/- {:.2f}) um'.format(*self.m.last_rslt[:2]))
